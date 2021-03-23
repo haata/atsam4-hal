@@ -33,6 +33,12 @@ extern crate smoltcp;
 #[cfg(feature = "atsam4e16e")]
 pub use atsam4e16e_pac as pac;
 
+#[cfg(feature = "atsam4s4b")]
+pub use atsam4s4b_pac as pac;
+
+#[cfg(feature = "atsam4s8b")]
+pub use atsam4s8b_pac as pac;
+
 #[cfg(feature = "atsam4sd32c")]
 pub use atsam4sd32c_pac as pac;
 
@@ -66,7 +72,12 @@ unsafe fn pre_init() {
             clock::init(pmc, efc);
         });
 
-        #[cfg(feature = "atsam4s")]
+        #[cfg(all(not(feature = "atsam4sd"), feature = "atsam4s"))]
+        pac::EFC0::borrow_unchecked(|efc0| {
+            clock::init(pmc, efc0);
+        });
+
+        #[cfg(feature = "atsam4sd")]
         pac::EFC0::borrow_unchecked(|efc0| {
             pac::EFC1::borrow_unchecked(|efc1| {
                 clock::init(pmc, efc0, efc1);
@@ -97,4 +108,7 @@ macro_rules! borrow_unchecked {
 borrow_unchecked!(WDT, PMC, EFC);
 
 #[cfg(feature = "atsam4s")]
-borrow_unchecked!(WDT, PMC, EFC0, EFC1);
+borrow_unchecked!(WDT, PMC, EFC0);
+
+#[cfg(feature = "atsam4sd")]
+borrow_unchecked!(EFC1);

@@ -1,3 +1,5 @@
+#![cfg(any(feature = "atsam4_c", feature = "atsam4e"))]
+
 use {
     crate::clock::{Enabled, StaticMemoryControllerClock},
     crate::gpio::*,
