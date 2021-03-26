@@ -93,6 +93,7 @@ pub mod pdc;
 pub mod prelude;
 pub mod rtt;
 pub mod serial;
+pub mod spi;
 pub mod static_memory_controller;
 #[cfg(all(feature = "usb", any(feature = "atsam4e", feature = "atsam4s")))]
 pub mod udp;
