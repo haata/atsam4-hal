@@ -18,153 +18,6 @@ use usb_device::bus::PollResult;
 use usb_device::endpoint::{EndpointAddress, EndpointType};
 use usb_device::{Result as UsbResult, UsbDirection, UsbError};
 
-/// EndpointTypeBits represents valid values for the EPTYPE fields in
-/// the UDP_CSRn registers.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum EndpointTypeBits {
-    Control = 0,
-    IsochronousOut = 1,
-    IsochronousIn = 5,
-    BulkOut = 2,
-    BulkIn = 6,
-    InterruptOut = 3,
-    InterruptIn = 7,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum Direction {
-    In,
-    Out,
-}
-
-impl Default for EndpointTypeBits {
-    fn default() -> Self {
-        EndpointTypeBits::Control
-    }
-}
-
-impl From<EndpointType> for EndpointTypeBits {
-    fn from(ep_type: EndpointType, dir: Direction) -> EndpointTypeBits {
-        match dir {
-            Direction::In => {
-                match ep_type {
-                    EndpointType::Control => EndpointTypeBits::Control,
-                    EndpointType::Isochronous => EndpointTypeBits::IsochronousIn,
-                    EndpointType::Bulk => EndpointTypeBits::BulkIn,
-                    EndpointType::Interrupt => EndpointTypeBits::InterruptIn,
-                }
-            }
-            Direction::Out => {
-                match ep_type {
-                    EndpointType::Control => EndpointTypeBits::Control,
-                    EndpointType::Isochronous => EndpointTypeBits::IsochronousOut,
-                    EndpointType::Bulk => EndpointTypeBits::BulkOut,
-                    EndpointType::Interrupt => EndpointTypeBits::InterruptOut,
-                }
-            }
-        }
-    }
-}
-
-/// EPConfig tracks the desired configuration for one side of an endpoint.
-#[derive(Default, Clone, Copy)]
-struct EPConfig {
-    ep_type: EndpointTypeBits,
-    allocated_size: u16,
-    max_packet_size: u16,
-    addr: usize,
-}
-
-impl EPConfig {
-    fn new(
-        ep_type: EndpointType,
-        allocated_size: u16,
-        max_packet_size: u16,
-        buffer_addr: *mut u8,
-    ) -> Self {
-        Self {
-            ep_type: ep_type.into(),
-            allocated_size,
-            max_packet_size,
-            addr: buffer_addr as usize,
-        }
-    }
-}
-
-// EndpointInfo represents the desired configuration for an endpoint pair.
-#[derive(Default)]
-struct EndpointInfo {
-    bank0: EPConfig,
-    bank1: EPConfig,
-}
-
-impl EndpointInfo {
-    fn new() -> Self {
-        Default::default()
-    }
-}
-
-/// AllEndpoints tracks the desired configuration of all endpoints managed
-/// by the USB peripheral.
-struct AllEndpoints {
-    endpoints: [EndpointInfo; 8],
-}
-
-impl AllEndpoints {
-    fn new() -> Self {
-        Self {
-            endpoints: [
-                EndpointInfo::new(),
-                EndpointInfo::new(),
-                EndpointInfo::new(),
-                EndpointInfo::new(),
-                EndpointInfo::new(),
-                EndpointInfo::new(),
-                EndpointInfo::new(),
-                EndpointInfo::new(),
-            ],
-        }
-    }
-
-    fn find_free_endpoint(&self, dir: UsbDirection) -> UsbResult<usize> {
-        // start with 1 because 0 is reserved for Control
-        for idx in 1..8 {
-            let ep_type = match dir {
-                UsbDirection::Out => self.endpoints[idx].bank0.ep_type,
-                UsbDirection::In => self.endpoints[idx].bank1.ep_type,
-            };
-            if ep_type == EndpointTypeBits::Disabled {
-                return Ok(idx);
-            }
-        }
-        Err(UsbError::EndpointOverflow)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn allocate_endpoint(
-        &mut self,
-        dir: UsbDirection,
-        idx: usize,
-        ep_type: EndpointType,
-        allocated_size: u16,
-        max_packet_size: u16,
-        _interval: u8,
-        buffer_addr: *mut u8,
-    ) -> UsbResult<EndpointAddress> {
-        let bank = match dir {
-            UsbDirection::Out => &mut self.endpoints[idx].bank0,
-            UsbDirection::In => &mut self.endpoints[idx].bank1,
-        };
-        if bank.ep_type != EndpointTypeBits::Disabled {
-            return Err(UsbError::EndpointOverflow);
-        }
-
-        *bank = EPConfig::new(ep_type, allocated_size, max_packet_size, buffer_addr);
-
-        Ok(EndpointAddress::from_parts(idx, dir))
-    }
-}
-
 // FIXME: replace with more general heap?
 const BUFFER_SIZE: usize = 2048;
 fn buffer() -> &'static mut [u8; BUFFER_SIZE] {
@@ -212,7 +65,6 @@ impl BufferAllocator {
 
 struct Inner {
     desc: RefCell<Descriptors>,
-    endpoints: RefCell<AllEndpoints>,
     buffers: RefCell<BufferAllocator>,
 }
 
@@ -220,15 +72,13 @@ pub struct UsbBus {
     inner: Mutex<RefCell<Inner>>,
 }
 
-struct Bank<'a, T> {
+struct Endpoint<'a> {
     address: EndpointAddress,
     usb: &'a UDP,
     desc: RefMut<'a, super::Descriptors>,
-    _phantom: PhantomData<T>,
-    endpoints: Ref<'a, AllEndpoints>,
 }
 
-impl<'a, T> Bank<'a, T> {
+impl<'a> Endpoint<'a> {
     fn usb(&self) -> &UDP {
         self.usb
     }
@@ -247,15 +97,7 @@ impl<'a, T> Bank<'a, T> {
             &ep.bank1
         }
     }
-}
 
-/// InBank represents In direction banks, Bank #1
-struct InBank;
-
-/// OutBank represents Out direction banks, Bank #0
-struct OutBank;
-
-impl<'a> Bank<'a, InBank> {
     fn desc_bank(&mut self) -> &mut DeviceDescBank {
         let idx = self.index();
         self.desc.bank(idx, 1)
@@ -361,12 +203,12 @@ impl<'a> Bank<'a, InBank> {
 }
 
 impl Inner {
-    fn bank0(&'_ self, ep: EndpointAddress) -> UsbResult<Bank<'_, OutBank>> {
+    fn ep(&'_ self, ep: EndpointAddress) -> UsbResult<Endpoint<'_>> {
+        // TODO Check in vs. out
         if ep.is_in() {
             return Err(UsbError::InvalidEndpoint);
         }
-        let endpoints = self.endpoints.borrow();
-
+        // TODO Check if disabled
         if endpoints.endpoints[ep.index()].bank0.ep_type == EndpointTypeBits::Disabled {
             return Err(UsbError::InvalidEndpoint);
         }
@@ -374,26 +216,6 @@ impl Inner {
             address: ep,
             usb: self.usb(),
             desc: self.desc.borrow_mut(),
-            endpoints,
-            _phantom: PhantomData,
-        })
-    }
-
-    fn bank1(&'_ self, ep: EndpointAddress) -> UsbResult<Bank<'_, InBank>> {
-        if ep.is_out() {
-            return Err(UsbError::InvalidEndpoint);
-        }
-        let endpoints = self.endpoints.borrow();
-
-        if endpoints.endpoints[ep.index()].bank1.ep_type == EndpointTypeBits::Disabled {
-            return Err(UsbError::InvalidEndpoint);
-        }
-        Ok(Bank {
-            address: ep,
-            usb: self.usb(),
-            desc: self.desc.borrow_mut(),
-            endpoints,
-            _phantom: PhantomData,
         })
     }
 }
@@ -414,7 +236,6 @@ impl UsbBus {
         let inner = Inner {
             desc,
             buffers: RefCell::new(BufferAllocator::new()),
-            endpoints: RefCell::new(AllEndpoints::new()),
         };
 
         Self {
