@@ -55,6 +55,7 @@ pub mod serial;
 pub mod spi;
 pub mod static_memory_controller;
 pub mod time;
+pub mod usb;
 pub mod watchdog;
 
 #[cfg(all(feature = "atsam4e16e", feature = "unstable"))]

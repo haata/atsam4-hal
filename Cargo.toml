@@ -10,24 +10,21 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/atsam4-rs/atsam4-hal"
 
 [dependencies]
+bitfield = "0.13"
+cortex-m = "0.7.2"
+cortex-m-rt = "0.6.13"
+cortex-m-semihosting = "~0.3" # REMOVE later?
+nb = "0.1.0"
 paste = "1.0"
+volatile = "0.4.1"
 
 [dependencies.cast]
 version = "0.2.2"
 default-features = false
 
-[dependencies.cortex-m]
-version = "0.7.2"
-
 [dependencies.embedded-hal]
 version = "0.2.4"
 features = ["unproven"]
-
-[dependencies.cortex-m-rt]
-version = "0.6.13"
-
-[dependencies.nb]
-version = "0.1.0"
 
 [dependencies.atsam4e16e-pac]
 version = "0.1.2"
@@ -51,6 +48,10 @@ optional = true
 version = "0.1.1"
 optional = true
 
+[dependencies.usb-device]
+version = "0.2"
+optional = true
+
 [dependencies.eui48]
 git = "https://github.com/CoolpeopleNetworks/eui48-rs.git"
 tag = "v0.1.0"
@@ -63,18 +64,16 @@ default-features = false
 version = "1.4.0"
 features = ["spin_no_std"]
 
-[dependencies.volatile]
-version = "0.4.1"
-
 [features]
 default = ["atsam4e16e"]
 unstable = []
 disable_watchdog_timer = []
-crystal_12Mhz = [] # Needed for USB support
+crystal_12Mhz = []
+usb = ["crystal_12Mhz", "usb-device"] # Crystal needed for USB support
 
 # atsam4e
 atsam4e = []
-atsam4e16e = ["atsam4e", "atsam4e16e-pac", "atsam4e16e-pac/rt", "crystal_12Mhz"]
+atsam4e16e = ["atsam4e", "atsam4e16e-pac", "atsam4e16e-pac/rt", "usb"]
 
 # atsam4s
 atsam4s = []
@@ -83,6 +82,6 @@ atsam4s_b = [] # 64-pin
 atsam4s_c = [] # 100-pin
 atsam4sd = [] # Dual bank flash
 
-atsam4s4b = ["atsam4s", "atsam4s_b", "atsam4s4b-pac", "atsam4s4b-pac/rt", "crystal_12Mhz"]
-atsam4s8b = ["atsam4s", "atsam4s_b", "atsam4s8b-pac", "atsam4s8b-pac/rt", "crystal_12Mhz"]
-atsam4sd32c = ["atsam4s", "atsam4sd", "atsam4s_c", "atsam4sd32c-pac", "atsam4sd32c-pac/rt", "crystal_12Mhz"]
+atsam4s4b = ["atsam4s", "atsam4s_b", "atsam4s4b-pac", "atsam4s4b-pac/rt", "usb"]
+atsam4s8b = ["atsam4s", "atsam4s_b", "atsam4s8b-pac", "atsam4s8b-pac/rt", "usb"]
+atsam4sd32c = ["atsam4s", "atsam4sd", "atsam4s_c", "atsam4sd32c-pac", "atsam4sd32c-pac/rt", "usb"]

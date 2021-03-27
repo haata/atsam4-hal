@@ -91,6 +91,10 @@ pub struct PfB;
 pub struct PfC;
 /// Peripheral Function D
 pub struct PfD;
+/// Extra Function
+pub struct Ef;
+/// System Function
+pub struct Sf;
 
 /// Floating Input
 pub struct Floating;
