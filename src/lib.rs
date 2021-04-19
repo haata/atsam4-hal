@@ -88,6 +88,7 @@ pub mod prelude;
 pub mod rtt;
 pub mod serial;
 pub mod static_memory_controller;
+pub mod twi;
 pub mod watchdog;
 
 /// Borrows a peripheral without checking if it has already been taken
