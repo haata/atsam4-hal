@@ -95,6 +95,7 @@ pub mod serial;
 pub mod spi;
 pub mod static_memory_controller;
 pub mod timer;
+pub mod twi;
 #[cfg(all(feature = "usb", any(feature = "atsam4e", feature = "atsam4s")))]
 pub mod udp;
 pub mod watchdog;
