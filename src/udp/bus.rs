@@ -29,23 +29,25 @@ pub struct UdpBus {
 impl UdpBus {
     /// Initialize UDP as a USB device
     pub fn new(udp: UDP, _clock: UdpClock<Disabled>, _ddm: Pb10<SysFn>, _ddp: Pb11<SysFn>) -> Self {
-        log::trace!("UdpBus::new()");
+        let endpoints = [
+            Mutex::new(RefCell::new(Endpoint::new(0, &udp))),
+            Mutex::new(RefCell::new(Endpoint::new(1, &udp))),
+            Mutex::new(RefCell::new(Endpoint::new(2, &udp))),
+            Mutex::new(RefCell::new(Endpoint::new(3, &udp))),
+            Mutex::new(RefCell::new(Endpoint::new(4, &udp))),
+            Mutex::new(RefCell::new(Endpoint::new(5, &udp))),
+            Mutex::new(RefCell::new(Endpoint::new(6, &udp))),
+            Mutex::new(RefCell::new(Endpoint::new(7, &udp))),
+        ];
+        let udp = Mutex::new(RefCell::new(udp));
+        let sof_errors = Mutex::new(RefCell::new(0));
         Self {
-            udp: Mutex::new(RefCell::new(udp)),
-            endpoints: [
-                Mutex::new(RefCell::new(Endpoint::new(0))),
-                Mutex::new(RefCell::new(Endpoint::new(1))),
-                Mutex::new(RefCell::new(Endpoint::new(2))),
-                Mutex::new(RefCell::new(Endpoint::new(3))),
-                Mutex::new(RefCell::new(Endpoint::new(4))),
-                Mutex::new(RefCell::new(Endpoint::new(5))),
-                Mutex::new(RefCell::new(Endpoint::new(6))),
-                Mutex::new(RefCell::new(Endpoint::new(7))),
-            ],
+            udp,
+            endpoints,
             clock: PhantomData,
             ddm: PhantomData,
             ddp: PhantomData,
-            sof_errors: Mutex::new(RefCell::new(0)),
+            sof_errors,
         }
     }
 }
@@ -60,27 +62,25 @@ impl UsbBus for UdpBus {
         interval: u8,
     ) -> usb_device::Result<EndpointAddress> {
         log::trace!(
-            "UsbBus::alloc_ep({:?}, {:?}, {:?}, {}, {})",
+            "UdpBus::alloc_ep({:?}, {:?}, {:?}, {}, {})",
             ep_dir,
             ep_addr,
             ep_type,
             max_packet_size,
             interval
         );
-        match ep_addr {
-            Some(ep_addr) => cortex_m::interrupt::free(|cs| {
-                self.endpoints[ep_addr.index()]
+        cortex_m::interrupt::free(|cs| {
+            match ep_addr {
+                Some(ep_addr) => self.endpoints[ep_addr.index()]
                     .borrow(cs)
                     .borrow_mut()
-                    .alloc(ep_type, ep_dir, max_packet_size, interval)
-            }),
-            None => {
-                // Iterate over all of the endpoints and try to allocate one
-                // Keep trying even if the first selection fails as there are different
-                // endpoint specs for each one.
-                // Only Control OUT endpoints are allocated, Control Endpoints are shared between
-                // IN and OUT (allocated a Control IN endpoint is a no-op).
-                cortex_m::interrupt::free(|cs| {
+                    .alloc(ep_type, ep_dir, max_packet_size, interval),
+                None => {
+                    // Iterate over all of the endpoints and try to allocate one
+                    // Keep trying even if the first selection fails as there are different
+                    // endpoint specs for each one.
+                    // Only Control OUT endpoints are allocated, Control Endpoints are shared between
+                    // IN and OUT (allocated a Control IN endpoint is a no-op).
                     for i in 0..NUM_ENDPOINTS {
                         match self.endpoints[i].borrow(cs).borrow_mut().alloc(
                             ep_type,
@@ -100,15 +100,15 @@ impl UsbBus for UdpBus {
 
                     // Couldn't find a free endpoint as specified
                     Err(usb_device::UsbError::InvalidEndpoint)
-                })
+                }
             }
-        }
+        })
     }
 
     /// Enable each of the configured endpoints
     /// Only allocated endpoints are enabled
     fn enable(&mut self) {
-        log::trace!("UsbBus::enable()");
+        log::trace!("UdpBus::enable()");
 
         // Enable UDP MCK (from MCK)
         #[cfg(feature = "atsam4e")]
@@ -140,7 +140,7 @@ impl UsbBus for UdpBus {
         let faddr_reg = UDP::borrow_unchecked(|udp| udp.faddr.as_ptr());
         let glb_stat_reg = UDP::borrow_unchecked(|udp| udp.glb_stat.as_ptr());
         log::trace!(
-            "UsbBus::reset() txvc:{:#x} imr:{:#x} faddr:{:#x} glb_stat:{:#x}",
+            "UdpBus::reset() txvc:{:#x} imr:{:#x} faddr:{:#x} glb_stat:{:#x}",
             unsafe { core::ptr::read(txvc_reg) },
             unsafe { core::ptr::read(imr_reg) },
             unsafe { core::ptr::read(faddr_reg) },
@@ -191,7 +191,7 @@ impl UsbBus for UdpBus {
         let faddr_reg = UDP::borrow_unchecked(|udp| udp.faddr.as_ptr());
         let glb_stat_reg = UDP::borrow_unchecked(|udp| udp.glb_stat.as_ptr());
         log::trace!(
-            "UsbBus::reset() (Updated) txvc:{:#x} imr:{:#x} faddr:{:#x} glb_stat:{:#x}",
+            "UdpBus::reset() (Updated) txvc:{:#x} imr:{:#x} faddr:{:#x} glb_stat:{:#x}",
             unsafe { core::ptr::read(txvc_reg) },
             unsafe { core::ptr::read(imr_reg) },
             unsafe { core::ptr::read(faddr_reg) },
@@ -201,7 +201,7 @@ impl UsbBus for UdpBus {
 
     /// Sets the device address, FEN (Function Enabled) and FADDEN (Function Address Enable)
     fn set_device_address(&self, addr: u8) {
-        log::trace!("UsbBus::set_device_address({})", addr);
+        log::trace!("UdpBus::set_device_address({})", addr);
         cortex_m::interrupt::free(|cs| {
             // Set Device Address and FEN
             self.udp
@@ -220,7 +220,7 @@ impl UsbBus for UdpBus {
     }
 
     fn write(&self, ep_addr: EndpointAddress, buf: &[u8]) -> usb_device::Result<usize> {
-        log::trace!("UsbBus::write({:?}, {:?})", ep_addr, buf);
+        log::trace!("UdpBus::write({:?}, {:?})", ep_addr, buf);
         cortex_m::interrupt::free(|cs| {
             // Make sure the endpoint is configured correctly
             if self.endpoints[ep_addr.index()]
@@ -241,7 +241,7 @@ impl UsbBus for UdpBus {
     }
 
     fn read(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> usb_device::Result<usize> {
-        log::trace!("UsbBus::read({:?})", ep_addr);
+        log::trace!("UdpBus::read({:?})", ep_addr);
         cortex_m::interrupt::free(|cs| {
             // Make sure the endpoint is configured correctly
             if self.endpoints[ep_addr.index()]
@@ -262,21 +262,21 @@ impl UsbBus for UdpBus {
     }
 
     fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
-        log::trace!("UsbBus::set_stalled({:?}, {})", ep_addr, stalled);
+        log::trace!("UdpBus::set_stalled({:?}, {})", ep_addr, stalled);
         cortex_m::interrupt::free(|cs| {
             if stalled {
-                self.endpoints[ep_addr.index()].borrow(cs).borrow().stall();
+                self.endpoints[ep_addr.index()].borrow(cs).borrow_mut().stall();
             } else {
                 self.endpoints[ep_addr.index()]
                     .borrow(cs)
-                    .borrow()
+                    .borrow_mut()
                     .unstall();
             }
         });
     }
 
     fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
-        log::trace!("UsbBus::is_stalled({:?})", ep_addr);
+        log::trace!("UdpBus::is_stalled({:?})", ep_addr);
         cortex_m::interrupt::free(|cs| {
             self.endpoints[ep_addr.index()]
                 .borrow(cs)
@@ -286,7 +286,7 @@ impl UsbBus for UdpBus {
     }
 
     fn suspend(&self) {
-        log::trace!("UsbBus::suspend()");
+        log::trace!("UdpBus::suspend()");
         // Disable Transceiver
         cortex_m::interrupt::free(|cs| {
             self.udp
@@ -311,7 +311,7 @@ impl UsbBus for UdpBus {
     }
 
     fn resume(&self) {
-        log::trace!("UsbBus::resume()");
+        log::trace!("UdpBus::resume()");
         // Enable PLLB (atsam4s only)
         #[cfg(feature = "atsam4s")]
         PMC::borrow_unchecked(|pmc| {
@@ -359,6 +359,7 @@ impl UsbBus for UdpBus {
                     *self.sof_errors.borrow(cs).borrow_mut() += 1;
                 }
             });
+            return PollResult::None;
         }
 
         // Process endpoints - Return as soon as a pending operation is found
@@ -430,7 +431,7 @@ impl UsbBus for UdpBus {
                     .write_with_zero(|w| w.rxsusp().set_bit().sofint().set_bit());
             });
 
-            log::trace!("UsbBus::poll() -> Resume");
+            log::info!("UdpBus::poll() -> Resume");
             return PollResult::Resume;
         }
 
@@ -459,7 +460,7 @@ impl UsbBus for UdpBus {
                     .write_with_zero(|w| w.wakeup().set_bit().rxrsm().set_bit().extrsm().set_bit());
             });
 
-            log::trace!("UsbBus::poll() -> Suspend");
+            log::info!("UdpBus::poll() -> Suspend");
             return PollResult::Suspend;
         }
 
@@ -474,7 +475,7 @@ impl UsbBus for UdpBus {
                     .write_with_zero(|w| w.endbusres().set_bit());
             });
 
-            log::trace!("UsbBus::poll() -> Reset");
+            log::warn!("UdpBus::poll() -> Reset");
             return PollResult::Reset;
         }
 
@@ -503,7 +504,7 @@ impl UsbBus for UdpBus {
 
     /// Simulates disconnection from the USB bus
     fn force_reset(&self) -> usb_device::Result<()> {
-        log::trace!("UsbBus::force_reset()");
+        log::trace!("UdpBus::force_reset()");
         cortex_m::interrupt::free(|cs| {
             // Disable Transceiver (TXDIS)
             // Disable 1.5k pullup

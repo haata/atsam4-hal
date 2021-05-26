@@ -31,6 +31,7 @@ pub struct Endpoint {
     next_bank: NextBank,
     allocated: bool,
     txbanks_free: u8,
+    stalled: bool,
 }
 
 macro_rules! clear_ep {
@@ -48,16 +49,13 @@ macro_rules! clear_ep {
 }
 
 impl Endpoint {
-    pub fn new(index: u8) -> Self {
+    pub fn new(index: u8, udp: &UDP) -> Self {
         // TODO Figure out how to given ownership to specific CSR and FDR registers
         //      These are effectively owned by this struct, but I'm not sure how to do
         //      this with how svd2rust generated
-        log::trace!("Endpoint::new({})", index);
 
         // Disable endpoint (to start fresh)
-        UDP::borrow_unchecked(|udp| {
-            udp.csr_mut()[index as usize].modify(|_, w| w.epeds().clear_bit())
-        });
+        udp.csr_mut()[index as usize].modify(|_, w| w.epeds().clear_bit());
 
         Self {
             index,
@@ -68,6 +66,7 @@ impl Endpoint {
             next_bank: NextBank::Bank0,
             allocated: false,
             txbanks_free: 0,
+            stalled: false,
         }
     }
 
@@ -82,6 +81,23 @@ impl Endpoint {
         max_packet_size: u16,
         interval: u8,
     ) -> usb_device::Result<EndpointAddress> {
+        let address = EndpointAddress::from_parts(self.index as usize, ep_dir);
+
+        // ep0 must be Control
+        if ep_type != EndpointType::Control && self.index == 0 {
+            return Err(usb_device::UsbError::InvalidEndpoint);
+        }
+
+        // Already allocated
+        if self.allocated {
+            // Ignore allocation check for Control endpoints
+            if ep_type == EndpointType::Control {
+                log::trace!("Endpoint{}::alloc() -> {:?}", self.index, address,);
+                return Ok(address);
+            }
+            return Err(usb_device::UsbError::InvalidEndpoint);
+        }
+
         log::trace!(
             "Endpoint{}::alloc({:?}, {:?}, {}, {})",
             self.index,
@@ -90,19 +106,6 @@ impl Endpoint {
             max_packet_size,
             interval
         );
-
-        let address = EndpointAddress::from_parts(self.index as usize, ep_dir);
-        // Ignore allocation for Control IN endpoints (but only if this endpoint can be a
-        // control endpoint).
-        if ep_type == EndpointType::Control && ep_dir == UsbDirection::In && !self.dual_bank() {
-            log::trace!("Endpoint{}::alloc() -> {:?}", self.index, address,);
-            return Ok(address);
-        }
-
-        // Already allocated
-        if self.allocated {
-            return Err(usb_device::UsbError::InvalidEndpoint);
-        }
 
         // Check if max_packet_size will fit on this endpoint
         self.max_packet_size = max_packet_size;
@@ -229,31 +232,38 @@ impl Endpoint {
     }
 
     /// Sets the STALL condition for the endpoint.
-    pub fn stall(&self) {
-        log::trace!("Endpoint{}::stall()", self.index);
+    pub fn stall(&mut self) {
+        if ! self.stalled {
+        log::debug!("Endpoint{}::stall()", self.index);
         UDP::borrow_unchecked(|udp| {
             udp.csr_mut()[self.index as usize].modify(|_, w| w.forcestall().set_bit())
         });
+        self.stalled = true;
+        }
     }
 
     /// Clears the STALL condition of the endpoint.
-    pub fn unstall(&self) {
+    pub fn unstall(&mut self) {
         log::trace!("Endpoint{}::unstall()", self.index);
         UDP::borrow_unchecked(|udp| {
             udp.csr_mut()[self.index as usize].modify(|_, w| w.forcestall().clear_bit())
         });
+        self.stalled = false;
+
+        // Recharge free banks after a stall clear
+        self.txbanks_free = if self.dual_bank() { 2 } else { 1 };
     }
 
     /// Check if STALL has been set
     pub fn is_stalled(&self) -> bool {
-        UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read().forcestall().bit())
+        self.stalled
+        //UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read().forcestall().bit())
     }
 
     /// Enable endpoint
     pub fn enable(&self) {
         // Only enable if the endpoint has been allocated
         if self.allocated {
-            log::trace!("Endpoint{}::enable()", self.index);
             UDP::borrow_unchecked(|udp| {
                 udp.csr_mut()[self.index as usize].modify(|_, w| w.epeds().set_bit())
             });
@@ -262,7 +272,6 @@ impl Endpoint {
 
     /// Disable endpoint
     pub fn disable(&self) {
-        log::trace!("Endpoint{}::disable()", self.index);
         UDP::borrow_unchecked(|udp| {
             udp.csr_mut()[self.index as usize].modify(|_, w| w.epeds().clear_bit())
         });
@@ -362,6 +371,16 @@ impl Endpoint {
         if self.interrupt_enabled() && self.interrupt() {
             let csr = UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read());
 
+            // STALLed
+            if csr.stallsent().bit() {
+                // Ack STALL
+                UDP::borrow_unchecked(|udp| {
+                    udp.csr_mut()[self.index as usize].modify(|_, w| w.stallsent().clear_bit())
+                });
+                self.stalled = false;
+                log::trace!("Endpoint{}::Poll() -> Ack STALL", self.index);
+            }
+
             // Determine endpoint type
             match self.ep_type {
                 EndpointType::Control => {
@@ -432,14 +451,6 @@ impl Endpoint {
                     }
                 }
             }
-
-            // STALLed
-            if csr.stallsent().bit() {
-                // Ack STALL
-                UDP::borrow_unchecked(|udp| {
-                    udp.csr_mut()[self.index as usize].modify(|_, w| w.stallsent().clear_bit())
-                });
-            }
         }
 
         PollResult::None
@@ -495,7 +506,7 @@ impl Endpoint {
         // Make sure the DIR bit is set correctly for CTRL endpoints
         if self.ep_type == EndpointType::Control {
             UDP::borrow_unchecked(|udp| {
-                udp.csr()[self.index as usize].modify(|_, w| w.eptype().ctrl().dir().set_bit())
+                udp.csr()[self.index as usize].modify(|_, w| w.dir().set_bit())
             });
         }
 
@@ -584,7 +595,7 @@ impl Endpoint {
                 UDP::borrow_unchecked(|udp| {
                     udp.csr_mut()[self.index as usize].modify(|_, w| w.rxsetup().clear_bit())
                 });
-                log::trace!("Endpoint{}::read({:?}) SETUP", self.index, data);
+                log::trace!("Endpoint{}::read({}, {:?}) SETUP", self.index, rxbytes, data);
                 return Ok(rxbytes);
             }
 
