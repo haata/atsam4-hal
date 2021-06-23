@@ -1,7 +1,7 @@
 use crate::clock::{Disabled, UdpClock};
 use crate::gpio::{Pb10, Pb11, SysFn};
 use crate::pac::{PMC, UDP};
-use crate::udp::Endpoint;
+use crate::udp::{frm_num, Endpoint};
 use crate::BorrowUnchecked;
 use core::cell::RefCell;
 use core::marker::PhantomData;
@@ -30,14 +30,14 @@ impl UdpBus {
     /// Initialize UDP as a USB device
     pub fn new(udp: UDP, _clock: UdpClock<Disabled>, _ddm: Pb10<SysFn>, _ddp: Pb11<SysFn>) -> Self {
         let endpoints = [
-            Mutex::new(RefCell::new(Endpoint::new(0, &udp))),
-            Mutex::new(RefCell::new(Endpoint::new(1, &udp))),
-            Mutex::new(RefCell::new(Endpoint::new(2, &udp))),
-            Mutex::new(RefCell::new(Endpoint::new(3, &udp))),
-            Mutex::new(RefCell::new(Endpoint::new(4, &udp))),
-            Mutex::new(RefCell::new(Endpoint::new(5, &udp))),
-            Mutex::new(RefCell::new(Endpoint::new(6, &udp))),
-            Mutex::new(RefCell::new(Endpoint::new(7, &udp))),
+            Mutex::new(RefCell::new(Endpoint::new(0))),
+            Mutex::new(RefCell::new(Endpoint::new(1))),
+            Mutex::new(RefCell::new(Endpoint::new(2))),
+            Mutex::new(RefCell::new(Endpoint::new(3))),
+            Mutex::new(RefCell::new(Endpoint::new(4))),
+            Mutex::new(RefCell::new(Endpoint::new(5))),
+            Mutex::new(RefCell::new(Endpoint::new(6))),
+            Mutex::new(RefCell::new(Endpoint::new(7))),
         ];
         let udp = Mutex::new(RefCell::new(udp));
         let sof_errors = Mutex::new(RefCell::new(0));
@@ -49,6 +49,23 @@ impl UdpBus {
             ddp: PhantomData,
             sof_errors,
         }
+    }
+
+    /// Enables UDP MCK (from MCK)
+    fn enable_periph_clk(&self) {
+        #[cfg(feature = "atsam4e")]
+        PMC::borrow_unchecked(|pmc| pmc.pmc_pcer1.write_with_zero(|w| w.pid35().set_bit()));
+        #[cfg(feature = "atsam4s")]
+        PMC::borrow_unchecked(|pmc| pmc.pmc_pcer1.write_with_zero(|w| w.pid34().set_bit()));
+    }
+
+    /// Disables UDP MCK (from MCK)
+    /// Used when entering USB suspend state
+    fn disable_periph_clk(&self) {
+        #[cfg(feature = "atsam4e")]
+        PMC::borrow_unchecked(|pmc| pmc.pmc_pcdr1.write_with_zero(|w| w.pid35().set_bit()));
+        #[cfg(feature = "atsam4s")]
+        PMC::borrow_unchecked(|pmc| pmc.pmc_pcdr1.write_with_zero(|w| w.pid34().set_bit()));
     }
 }
 
@@ -111,10 +128,7 @@ impl UsbBus for UdpBus {
         log::trace!("UdpBus::enable()");
 
         // Enable UDP MCK (from MCK)
-        #[cfg(feature = "atsam4e")]
-        PMC::borrow_unchecked(|pmc| pmc.pmc_pcer1.write_with_zero(|w| w.pid35().set_bit()));
-        #[cfg(feature = "atsam4s")]
-        PMC::borrow_unchecked(|pmc| pmc.pmc_pcer1.write_with_zero(|w| w.pid34().set_bit()));
+        self.enable_periph_clk();
 
         // Enable fast restart signal
         PMC::borrow_unchecked(|pmc| pmc.pmc_fsmr.modify(|_, w| w.usbal().set_bit()));
@@ -140,7 +154,8 @@ impl UsbBus for UdpBus {
         let faddr_reg = UDP::borrow_unchecked(|udp| udp.faddr.as_ptr());
         let glb_stat_reg = UDP::borrow_unchecked(|udp| udp.glb_stat.as_ptr());
         log::trace!(
-            "UdpBus::reset() txvc:{:#x} imr:{:#x} faddr:{:#x} glb_stat:{:#x}",
+            "{: <4} UdpBus::reset() txvc:{:#x} imr:{:#x} faddr:{:#x} glb_stat:{:#x}",
+            frm_num(),
             unsafe { core::ptr::read(txvc_reg) },
             unsafe { core::ptr::read(imr_reg) },
             unsafe { core::ptr::read(faddr_reg) },
@@ -191,7 +206,8 @@ impl UsbBus for UdpBus {
         let faddr_reg = UDP::borrow_unchecked(|udp| udp.faddr.as_ptr());
         let glb_stat_reg = UDP::borrow_unchecked(|udp| udp.glb_stat.as_ptr());
         log::trace!(
-            "UdpBus::reset() (Updated) txvc:{:#x} imr:{:#x} faddr:{:#x} glb_stat:{:#x}",
+            "{: <4} UdpBus::reset() (Updated) txvc:{:#x} imr:{:#x} faddr:{:#x} glb_stat:{:#x}",
+            frm_num(),
             unsafe { core::ptr::read(txvc_reg) },
             unsafe { core::ptr::read(imr_reg) },
             unsafe { core::ptr::read(faddr_reg) },
@@ -201,7 +217,7 @@ impl UsbBus for UdpBus {
 
     /// Sets the device address, FEN (Function Enabled) and FADDEN (Function Address Enable)
     fn set_device_address(&self, addr: u8) {
-        log::trace!("UdpBus::set_device_address({})", addr);
+        log::trace!("{: <4} UdpBus::set_device_address({})", frm_num(), addr);
         cortex_m::interrupt::free(|cs| {
             // Set Device Address and FEN
             self.udp
@@ -220,7 +236,7 @@ impl UsbBus for UdpBus {
     }
 
     fn write(&self, ep_addr: EndpointAddress, buf: &[u8]) -> usb_device::Result<usize> {
-        log::trace!("UdpBus::write({:?}, {:?})", ep_addr, buf);
+        log::trace!("{: <4} UdpBus::write({:?}, {:02X?})", frm_num(), ep_addr, buf);
         cortex_m::interrupt::free(|cs| {
             // Make sure the endpoint is configured correctly
             if self.endpoints[ep_addr.index()]
@@ -241,7 +257,7 @@ impl UsbBus for UdpBus {
     }
 
     fn read(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> usb_device::Result<usize> {
-        log::trace!("UdpBus::read({:?})", ep_addr);
+        log::trace!("{: <4} UdpBus::read({:02X?})", frm_num(), ep_addr);
         cortex_m::interrupt::free(|cs| {
             // Make sure the endpoint is configured correctly
             if self.endpoints[ep_addr.index()]
@@ -262,10 +278,13 @@ impl UsbBus for UdpBus {
     }
 
     fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
-        log::trace!("UdpBus::set_stalled({:?}, {})", ep_addr, stalled);
+        log::trace!("{: <4} UdpBus::set_stalled({:?}, {})", frm_num(), ep_addr, stalled);
         cortex_m::interrupt::free(|cs| {
             if stalled {
-                self.endpoints[ep_addr.index()].borrow(cs).borrow_mut().stall();
+                self.endpoints[ep_addr.index()]
+                    .borrow(cs)
+                    .borrow_mut()
+                    .stall();
             } else {
                 self.endpoints[ep_addr.index()]
                     .borrow(cs)
@@ -276,7 +295,7 @@ impl UsbBus for UdpBus {
     }
 
     fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
-        log::trace!("UdpBus::is_stalled({:?})", ep_addr);
+        log::trace!("{: <4} UdpBus::is_stalled({:?})", frm_num(), ep_addr);
         cortex_m::interrupt::free(|cs| {
             self.endpoints[ep_addr.index()]
                 .borrow(cs)
@@ -286,7 +305,7 @@ impl UsbBus for UdpBus {
     }
 
     fn suspend(&self) {
-        log::trace!("UdpBus::suspend()");
+        log::trace!("{: <4} UdpBus::suspend()", frm_num());
         // Disable Transceiver
         cortex_m::interrupt::free(|cs| {
             self.udp
@@ -311,7 +330,7 @@ impl UsbBus for UdpBus {
     }
 
     fn resume(&self) {
-        log::trace!("UdpBus::resume()");
+        log::trace!("{: <4} UdpBus::resume()", frm_num());
         // Enable PLLB (atsam4s only)
         #[cfg(feature = "atsam4s")]
         PMC::borrow_unchecked(|pmc| {
@@ -339,6 +358,9 @@ impl UsbBus for UdpBus {
     }
 
     fn poll(&self) -> PollResult {
+        // UDP MCK must be enabled before reading/writing any UDP registers
+        self.enable_periph_clk();
+
         // Read interrupt enabled status
         let imr = cortex_m::interrupt::free(|cs| self.udp.borrow(cs).borrow().imr.read());
         // Read interrupt status
@@ -359,7 +381,6 @@ impl UsbBus for UdpBus {
                     *self.sof_errors.borrow(cs).borrow_mut() += 1;
                 }
             });
-            return PollResult::None;
         }
 
         // Process endpoints - Return as soon as a pending operation is found
@@ -431,7 +452,7 @@ impl UsbBus for UdpBus {
                     .write_with_zero(|w| w.rxsusp().set_bit().sofint().set_bit());
             });
 
-            log::info!("UdpBus::poll() -> Resume");
+            log::info!("{: <4} UdpBus::poll() -> Resume", frm_num());
             return PollResult::Resume;
         }
 
@@ -460,7 +481,10 @@ impl UsbBus for UdpBus {
                     .write_with_zero(|w| w.wakeup().set_bit().rxrsm().set_bit().extrsm().set_bit());
             });
 
-            log::info!("UdpBus::poll() -> Suspend");
+            // Disable UDP MCK (after this, cannot read from UDP registers)
+            self.disable_periph_clk();
+
+            log::info!("{: <4} UdpBus::poll() -> Suspend", frm_num());
             return PollResult::Suspend;
         }
 
@@ -475,7 +499,7 @@ impl UsbBus for UdpBus {
                     .write_with_zero(|w| w.endbusres().set_bit());
             });
 
-            log::warn!("UdpBus::poll() -> Reset");
+            log::warn!("{: <4} UdpBus::poll() -> Reset", frm_num());
             return PollResult::Reset;
         }
 
@@ -484,6 +508,9 @@ impl UsbBus for UdpBus {
 
     /// Initiates the remote wakeup sequenec
     fn remote_wakeup(&self) -> usb_device::Result<()> {
+        // Enable UDP MCK (from MCK)
+        self.enable_periph_clk();
+
         cortex_m::interrupt::free(|cs| {
             // Check if bus has been suspended
             // NOTE: You must wait 5 ms between host suspending the bus and initiating a remote wakeup
@@ -504,7 +531,7 @@ impl UsbBus for UdpBus {
 
     /// Simulates disconnection from the USB bus
     fn force_reset(&self) -> usb_device::Result<()> {
-        log::trace!("UdpBus::force_reset()");
+        log::trace!("{: <4} UdpBus::force_reset()", frm_num());
         cortex_m::interrupt::free(|cs| {
             // Disable Transceiver (TXDIS)
             // Disable 1.5k pullup

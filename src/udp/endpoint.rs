@@ -1,7 +1,10 @@
+use crate::BorrowUnchecked;
+use crate::pac::UDP;
 use crate::pac::generic::Variant::Val;
 use crate::pac::udp::csr::EPTYPE_A;
-use crate::pac::UDP;
-use crate::BorrowUnchecked;
+use crate::pac::udp::csr;
+use crate::udp::frm_num;
+use paste::paste;
 use usb_device::{
     bus::PollResult,
     endpoint::{EndpointAddress, EndpointType},
@@ -48,14 +51,121 @@ macro_rules! clear_ep {
     }};
 }
 
+/// Creates a csr field set function $field_set(endpoint index)
+/// or a csr field clear function $field_clear(endpoint index)
+/// See ATSAM4S 40.7.10 warning on why this is necessary.
+///
+/// Uses $field_$eptype_dir_set(endpoint index) and $field_$eptype_dir_clear(endpoint index)
+/// for the eptype field.
+macro_rules! csr_wait {
+    (
+        $field:ident,
+        set
+    ) => {
+        paste! {
+            pub fn [<$field _set>](index: u8) {
+                UDP::borrow_unchecked(|udp| {
+                    // Set bit
+                    udp.csr_mut()[index as usize]
+                        .modify(|_, w| csr_no_change(w).$field().set_bit());
+                    // Wait for bit to set (See Warning 40.7.10 atsam4s datasheet)
+                    while !udp.csr()[index as usize].read().$field().bit() {}
+                });
+            }
+        }
+    };
+    (
+        $field:ident,
+        clear
+    ) => {
+        paste! {
+            pub fn [<$field _clear>](index: u8) {
+                UDP::borrow_unchecked(|udp| {
+                    // Clear bit
+                    udp.csr_mut()[index as usize]
+                        .modify(|_, w| csr_no_change(w).$field().clear_bit());
+                    // Wait for bit to clear (See Warning 40.7.10 atsam4s datasheet)
+                    while udp.csr()[index as usize].read().$field().bit() {}
+                });
+            }
+        }
+    };
+    (
+        $field:ident,
+        $eptype_dir:ident,
+        eptype
+    ) => {
+        paste! {
+            pub fn [<$field _ $eptype_dir>](index: u8) {
+                UDP::borrow_unchecked(|udp| {
+                    // Set bit
+                    udp.csr_mut()[index as usize]
+                        .modify(|_, w| csr_no_change(w).$field().$eptype_dir());
+                    // Wait for bit to set (See Warning 40.7.10 atsam4s datasheet)
+                    while !udp.csr()[index as usize].read().$field().[<is_ $eptype_dir>]() {}
+                });
+            }
+        }
+    };
+}
+
+/// The UDP CSR register is a bit strange in that for a modification to have no unexpected
+/// side-effects you must set a number of bits.
+/// - rx_data_bk0
+/// - rx_data_bk1
+/// - stallsent
+/// - rxsetup
+/// - txcomp
+/// It's not sufficient to use a reset value as other bits (such as epeds), must not change
+/// from the set value.
+/// This is a convenience function to handle setting of these bits.
+fn csr_no_change(w: &mut csr::W) -> &mut csr::W {
+    w.rx_data_bk0()
+        .set_bit()
+        .rx_data_bk1()
+        .set_bit()
+        .stallsent()
+        .set_bit()
+        .rxsetup()
+        .set_bit()
+        .txcomp()
+        .set_bit()
+}
+
+// Generate CSR set functions
+csr_wait!(dir, set);
+csr_wait!(epeds, set);
+csr_wait!(forcestall, set);
+csr_wait!(txpktrdy, set);
+
+// Generate CSR clear functions
+csr_wait!(dir, clear);
+csr_wait!(epeds, clear);
+csr_wait!(forcestall, clear);
+csr_wait!(rx_data_bk0, clear);
+csr_wait!(rx_data_bk1, clear);
+csr_wait!(rxsetup, clear);
+csr_wait!(stallsent, clear);
+csr_wait!(txcomp, clear);
+csr_wait!(txpktrdy, clear);
+
+// Generate CSR eptype functions
+csr_wait!(eptype, bulk_in, eptype);
+csr_wait!(eptype, bulk_out, eptype);
+csr_wait!(eptype, ctrl, eptype);
+csr_wait!(eptype, int_in, eptype);
+csr_wait!(eptype, int_out, eptype);
+csr_wait!(eptype, iso_in, eptype);
+csr_wait!(eptype, iso_out, eptype);
+
 impl Endpoint {
-    pub fn new(index: u8, udp: &UDP) -> Self {
+    pub fn new(index: u8) -> Self {
         // TODO Figure out how to given ownership to specific CSR and FDR registers
         //      These are effectively owned by this struct, but I'm not sure how to do
         //      this with how svd2rust generated
 
         // Disable endpoint (to start fresh)
-        udp.csr_mut()[index as usize].modify(|_, w| w.epeds().clear_bit());
+        epeds_clear(index);
 
         Self {
             index,
@@ -92,14 +202,15 @@ impl Endpoint {
         if self.allocated {
             // Ignore allocation check for Control endpoints
             if ep_type == EndpointType::Control {
-                log::trace!("Endpoint{}::alloc() -> {:?}", self.index, address,);
+                log::trace!("{: <4} Endpoint{}::alloc() -> {:?}", frm_num(), self.index, address,);
                 return Ok(address);
             }
             return Err(usb_device::UsbError::InvalidEndpoint);
         }
 
         log::trace!(
-            "Endpoint{}::alloc({:?}, {:?}, {}, {})",
+            "{: <4} Endpoint{}::alloc({:?}, {:?}, {}, {})",
+            frm_num(),
             self.index,
             ep_type,
             ep_dir,
@@ -138,7 +249,7 @@ impl Endpoint {
 
         self.allocated = true;
         self.interval = interval;
-        log::trace!("Endpoint{}::alloc() -> {:?}", self.index, address,);
+        log::trace!("{: <4} Endpoint{}::alloc() -> {:?}", frm_num(), self.index, address,);
         Ok(address)
     }
 
@@ -233,21 +344,17 @@ impl Endpoint {
 
     /// Sets the STALL condition for the endpoint.
     pub fn stall(&mut self) {
-        if ! self.stalled {
-        log::debug!("Endpoint{}::stall()", self.index);
-        UDP::borrow_unchecked(|udp| {
-            udp.csr_mut()[self.index as usize].modify(|_, w| w.forcestall().set_bit())
-        });
-        self.stalled = true;
+        if !self.stalled {
+            log::debug!("{: <4} Endpoint{}::stall()", frm_num(), self.index);
+            forcestall_set(self.index);
+            self.stalled = true;
         }
     }
 
     /// Clears the STALL condition of the endpoint.
     pub fn unstall(&mut self) {
-        log::trace!("Endpoint{}::unstall()", self.index);
-        UDP::borrow_unchecked(|udp| {
-            udp.csr_mut()[self.index as usize].modify(|_, w| w.forcestall().clear_bit())
-        });
+        log::trace!("{: <4} Endpoint{}::unstall()", frm_num(), self.index);
+        forcestall_clear(self.index);
         self.stalled = false;
 
         // Recharge free banks after a stall clear
@@ -257,24 +364,19 @@ impl Endpoint {
     /// Check if STALL has been set
     pub fn is_stalled(&self) -> bool {
         self.stalled
-        //UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read().forcestall().bit())
     }
 
     /// Enable endpoint
     pub fn enable(&self) {
         // Only enable if the endpoint has been allocated
         if self.allocated {
-            UDP::borrow_unchecked(|udp| {
-                udp.csr_mut()[self.index as usize].modify(|_, w| w.epeds().set_bit())
-            });
+            epeds_set(self.index);
         }
     }
 
     /// Disable endpoint
     pub fn disable(&self) {
-        UDP::borrow_unchecked(|udp| {
-            udp.csr_mut()[self.index as usize].modify(|_, w| w.epeds().clear_bit())
-        });
+        epeds_clear(self.index);
     }
 
     /// Clear fifo (two step, set then clear)
@@ -299,7 +401,18 @@ impl Endpoint {
         if !self.allocated {
             return;
         }
-        log::trace!("Endpoint{}::reset()", self.index);
+        log::trace!("{: <4} Endpoint{}::reset()", frm_num(), self.index);
+
+        // Toggle TXPKTRDY to force a FIFO flush
+        if self.dual_bank() {
+            txpktrdy_set(self.index);
+            txpktrdy_clear(self.index);
+        } else {
+            txpktrdy_set(self.index);
+            txpktrdy_clear(self.index);
+            txpktrdy_set(self.index);
+            txpktrdy_clear(self.index);
+        }
 
         // Reset endpoint FIFO
         self.clear_fifo();
@@ -311,45 +424,31 @@ impl Endpoint {
         match self.ep_type {
             EndpointType::Bulk => match self.ep_dir {
                 UsbDirection::In => {
-                    UDP::borrow_unchecked(|udp| {
-                        udp.csr()[self.index as usize].modify(|_, w| w.eptype().bulk_in())
-                    });
+                    eptype_bulk_in(self.index);
                 }
                 UsbDirection::Out => {
-                    UDP::borrow_unchecked(|udp| {
-                        udp.csr()[self.index as usize].modify(|_, w| w.eptype().bulk_out())
-                    });
+                    eptype_bulk_out(self.index);
                 }
             },
             EndpointType::Control => {
                 // Control Endpoint must start out configured in the OUT direction
-                UDP::borrow_unchecked(|udp| {
-                    udp.csr()[self.index as usize]
-                        .modify(|_, w| w.eptype().ctrl().dir().clear_bit())
-                });
+                eptype_ctrl(self.index);
+                dir_clear(self.index);
             }
             EndpointType::Interrupt => match self.ep_dir {
                 UsbDirection::In => {
-                    UDP::borrow_unchecked(|udp| {
-                        udp.csr()[self.index as usize].modify(|_, w| w.eptype().int_in())
-                    });
+                    eptype_int_in(self.index);
                 }
                 UsbDirection::Out => {
-                    UDP::borrow_unchecked(|udp| {
-                        udp.csr()[self.index as usize].modify(|_, w| w.eptype().int_out())
-                    });
+                    eptype_int_out(self.index);
                 }
             },
             EndpointType::Isochronous => match self.ep_dir {
                 UsbDirection::In => {
-                    UDP::borrow_unchecked(|udp| {
-                        udp.csr()[self.index as usize].modify(|_, w| w.eptype().iso_in())
-                    });
+                    eptype_iso_in(self.index);
                 }
                 UsbDirection::Out => {
-                    UDP::borrow_unchecked(|udp| {
-                        udp.csr()[self.index as usize].modify(|_, w| w.eptype().iso_out())
-                    });
+                    eptype_iso_out(self.index);
                 }
             },
         }
@@ -357,6 +456,8 @@ impl Endpoint {
         // Enable endpoint
         self.enable();
 
+        let csr = UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read()).bits();
+        log::debug!("CSR: {:X}", csr);
         // Enable interrupt
         self.interrupt_set(true);
     }
@@ -367,18 +468,22 @@ impl Endpoint {
             return PollResult::None;
         }
 
+        // Check if interupt is enabled (except for Ctrl endpoints)
+        if !self.interrupt_enabled() && self.ep_type != EndpointType::Control {
+            return PollResult::None;
+        }
+
         // Check endpoint interrupt
-        if self.interrupt_enabled() && self.interrupt() {
+        if self.interrupt() {
             let csr = UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read());
 
             // STALLed
             if csr.stallsent().bit() {
                 // Ack STALL
-                UDP::borrow_unchecked(|udp| {
-                    udp.csr_mut()[self.index as usize].modify(|_, w| w.stallsent().clear_bit())
-                });
+                stallsent_clear(self.index);
                 self.stalled = false;
-                log::trace!("Endpoint{}::Poll() -> Ack STALL", self.index);
+                log::debug!("{: <4} Endpoint{}::Poll() -> Ack STALL", frm_num(), self.index);
+                return PollResult::None;
             }
 
             // Determine endpoint type
@@ -386,7 +491,7 @@ impl Endpoint {
                 EndpointType::Control => {
                     // SETUP packet received
                     let ep_setup = if csr.rxsetup().bit() {
-                        log::trace!("Endpoint{}::Poll(Ctrl) -> SETUP", self.index);
+                        log::debug!("{: <4} Endpoint{}::Poll(Ctrl) -> SETUP", frm_num(), self.index);
                         1 << self.index
                     } else {
                         0
@@ -394,22 +499,30 @@ impl Endpoint {
                     // IN packet sent
                     let ep_in_complete = if csr.txcomp().bit() {
                         // Ack TXCOMP
-                        UDP::borrow_unchecked(|udp| {
-                            udp.csr_mut()[self.index as usize].modify(|_, w| w.txcomp().clear_bit())
-                        });
+                        txcomp_clear(self.index);
+                        log::debug!("{: <4} Endpoint{}::Poll(Ctrl) -> IN", frm_num(), self.index);
+                        /* TODO Should be handled by usb-device
+                        // There (likely) will be a Status OUT zlp that we can identify and clear
+                        let csr = UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read());
+                        if csr.rx_data_bk0().bit() && csr.rxbytecnt().bits() == 0 {
+                            log::debug!("{: <4} Endpoint{}::Poll(Ctrl) -> Status OUT", frm_num(), self.index);
+                            rx_data_bk0_clear(self.index);
+                        }
+                        */
                         self.txbanks_free += 1;
-                        log::trace!("Endpoint{}::Poll(Ctrl) -> IN", self.index);
                         1 << self.index
                     } else {
                         0
                     };
-                    // OUT packet received
+                    // OUT packet received (must refresh csr due to txcomp_clear)
+                    let csr = UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read());
                     let ep_out = if csr.rx_data_bk0().bit() {
-                        log::trace!("Endpoint{}::Poll(Ctrl) -> OUT", self.index);
+                        log::debug!("{: <4} Endpoint{}::Poll(Ctrl) -> OUT", frm_num(), self.index);
                         1 << self.index
                     } else {
                         0
                     };
+                    log::debug!("CSR: {:X}", csr.bits());
 
                     // Return if we found any CTRL status flags
                     if (ep_setup | ep_in_complete | ep_out) > 0 {
@@ -423,7 +536,7 @@ impl Endpoint {
                 EndpointType::Bulk | EndpointType::Interrupt | EndpointType::Isochronous => {
                     // RXOUT: Full packet received
                     let ep_out = if csr.rx_data_bk0().bit() || csr.rx_data_bk1().bit() {
-                        log::trace!("Endpoint{}::Poll({:?}) -> OUT", self.index, self.ep_type);
+                        log::trace!("{: <4} Endpoint{}::Poll({:?}) -> OUT", frm_num(), self.index, self.ep_type);
                         1 << self.index
                     } else {
                         0
@@ -431,11 +544,9 @@ impl Endpoint {
                     // TXIN: Packet sent
                     let ep_in_complete = if csr.txcomp().bit() {
                         // Ack TXCOMP
-                        UDP::borrow_unchecked(|udp| {
-                            udp.csr_mut()[self.index as usize].modify(|_, w| w.txcomp().clear_bit())
-                        });
+                        txcomp_clear(self.index);
                         self.txbanks_free += 1;
-                        log::trace!("Endpoint{}::Poll({:?}) -> IN", self.index, self.ep_type);
+                        log::trace!("{: <4} Endpoint{}::Poll({:?}) -> IN", frm_num(), self.index, self.ep_type);
                         1 << self.index
                     } else {
                         0
@@ -472,7 +583,7 @@ impl Endpoint {
     ///   `max_packet_size` specified when allocating the endpoint. This is generally an error in
     ///   the class implementation.
     pub fn write(&mut self, data: &[u8]) -> usb_device::Result<usize> {
-        log::trace!("Endpoint{}::write({:?})", self.index, data);
+        let csr = UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read());
         // -- Data IN Transaction --
         // * Check for FIFO ready by polling TXPKTRDY in CSR
         // * Write packet data to FDR
@@ -499,15 +610,8 @@ impl Endpoint {
 
         // Make sure FIFO is ready
         // This counter takes into account Ctrl vs Non-Ctrl endpoints
-        if self.txbanks_free == 0 {
+        if self.txbanks_free == 0 || (self.txbanks_free == 1 && csr.txpktrdy().bit()) {
             return Err(usb_device::UsbError::WouldBlock);
-        }
-
-        // Make sure the DIR bit is set correctly for CTRL endpoints
-        if self.ep_type == EndpointType::Control {
-            UDP::borrow_unchecked(|udp| {
-                udp.csr()[self.index as usize].modify(|_, w| w.dir().set_bit())
-            });
         }
 
         // Make sure we don't overflow the endpoint fifo
@@ -516,21 +620,22 @@ impl Endpoint {
             return Err(usb_device::UsbError::EndpointMemoryOverflow);
         }
 
-        // Write data to fifo
-        for byte in data {
-            UDP::borrow_unchecked(|udp| {
-                udp.fdr[self.index as usize]
-                    .write_with_zero(|w| unsafe { w.fifo_data().bits(*byte) })
-            });
-        }
-        self.txbanks_free -= 1;
+        // While copying data to FIFO do not interrupt
+        cortex_m::interrupt::free(|_| {
+            // Write data to fifo
+            for byte in data {
+                UDP::borrow_unchecked(|udp| {
+                    udp.fdr[self.index as usize]
+                        .write_with_zero(|w| unsafe { w.fifo_data().bits(*byte) })
+                });
+            }
+            self.txbanks_free -= 1;
 
-        // Set TXPKTRDY
-        UDP::borrow_unchecked(|udp| {
-            udp.csr_mut()[self.index as usize].modify(|_, w| w.txpktrdy().set_bit())
+            // Set TXPKTRDY
+            txpktrdy_set(self.index);
         });
 
-        log::trace!("Endpoint{}::write() -> {}", self.index, data.len());
+        log::debug!("{: <4} Endpoint{}::write() -> {}", frm_num(), self.index, data.len());
         Ok(data.len())
     }
 
@@ -549,7 +654,7 @@ impl Endpoint {
     /// * [`BufferOverflow`](crate::UsbError::BufferOverflow) - The received packet is too long to
     ///   fit in `data`. This is generally an error in the class implementation.
     pub fn read(&mut self, data: &mut [u8]) -> usb_device::Result<usize> {
-        log::trace!("Endpoint{}::read()", self.index);
+        log::debug!("{: <4} Endpoint{}::read()", frm_num(), self.index);
         let csr = UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read());
 
         // Make sure endpoint has been allocated
@@ -563,6 +668,7 @@ impl Endpoint {
             // * Hardware automatically acknowledges
             // * RXSETUP is set in CSR
             // * Interrupt until RXSETUP is cleared
+            // * If SETUP IN, set the DIR bit
             // -- Data OUT Transaction --
             // * Until FIFO is ready, hardware sends NAKs automatically
             // * After data is written to FIFO, ACK automatically sent
@@ -578,11 +684,16 @@ impl Endpoint {
                 let rxbytes = csr.rxbytecnt().bits() as usize;
                 if rxbytes > data.len() {
                     // Clear RXSETUP, to continue after the overflow
-                    UDP::borrow_unchecked(|udp| {
-                        udp.csr_mut()[self.index as usize].modify(|_, w| w.rxsetup().clear_bit())
-                    });
+                    rxsetup_clear(self.index);
                     return Err(usb_device::UsbError::BufferOverflow);
                 }
+
+                /*
+                // All setup transactions have bytes, block if not ready
+                if rxbytes == 0 {
+                    return Err(usb_device::UsbError::WouldBlock);
+                }
+                */
 
                 // Copy fifo into buffer
                 for byte in data.iter_mut().take(rxbytes) {
@@ -591,11 +702,24 @@ impl Endpoint {
                     });
                 }
 
+                // We can determine the direction by looking at the first byte
+                let dir: UsbDirection = data[0].into();
+                if dir == UsbDirection::In {
+                    dir_set(self.index);
+                } else {
+                    dir_clear(self.index);
+                }
+
                 // Clear RXSETUP
-                UDP::borrow_unchecked(|udp| {
-                    udp.csr_mut()[self.index as usize].modify(|_, w| w.rxsetup().clear_bit())
-                });
-                log::trace!("Endpoint{}::read({}, {:?}) SETUP", self.index, rxbytes, data);
+                rxsetup_clear(self.index);
+                log::debug!(
+                    "{: <4} Endpoint{}::read({}, {:02X?}) SETUP {:?}",
+                    frm_num(),
+                    self.index,
+                    rxbytes,
+                    &data[0..rxbytes],
+                    dir
+                );
                 return Ok(rxbytes);
             }
 
@@ -605,10 +729,7 @@ impl Endpoint {
                 let rxbytes = csr.rxbytecnt().bits() as usize;
                 if rxbytes > data.len() {
                     // Clear RX_DATA_BK0, to continue after the overflow
-                    UDP::borrow_unchecked(|udp| {
-                        udp.csr_mut()[self.index as usize]
-                            .modify(|_, w| w.rx_data_bk0().clear_bit())
-                    });
+                    rx_data_bk0_clear(self.index);
                     return Err(usb_device::UsbError::BufferOverflow);
                 }
 
@@ -620,10 +741,8 @@ impl Endpoint {
                 }
 
                 // Clear RX_DATA_BK0
-                UDP::borrow_unchecked(|udp| {
-                    udp.csr_mut()[self.index as usize].modify(|_, w| w.rx_data_bk0().clear_bit())
-                });
-                log::trace!("Endpoint{}::read({:?}) OUT", self.index, data);
+                rx_data_bk0_clear(self.index);
+                log::debug!("{: <4} Endpoint{}::read({:?}) OUT", frm_num(), self.index, data);
                 return Ok(rxbytes);
             }
 
@@ -673,17 +792,11 @@ impl Endpoint {
             // Clear bank fifo, to continue after the overflow
             match bank {
                 NextBank::Bank0 => {
-                    UDP::borrow_unchecked(|udp| {
-                        udp.csr_mut()[self.index as usize]
-                            .modify(|_, w| w.rx_data_bk0().clear_bit())
-                    });
+                    rx_data_bk0_clear(self.index);
                     self.next_bank = NextBank::Bank1;
                 }
                 NextBank::Bank1 => {
-                    UDP::borrow_unchecked(|udp| {
-                        udp.csr_mut()[self.index as usize]
-                            .modify(|_, w| w.rx_data_bk1().clear_bit())
-                    });
+                    rx_data_bk1_clear(self.index);
                     self.next_bank = NextBank::Bank0;
                 }
             }
@@ -699,15 +812,11 @@ impl Endpoint {
         // Clear bank fifo to indicate finished
         match bank {
             NextBank::Bank0 => {
-                UDP::borrow_unchecked(|udp| {
-                    udp.csr_mut()[self.index as usize].modify(|_, w| w.rx_data_bk0().clear_bit())
-                });
+                rx_data_bk0_clear(self.index);
                 self.next_bank = NextBank::Bank1;
             }
             NextBank::Bank1 => {
-                UDP::borrow_unchecked(|udp| {
-                    udp.csr_mut()[self.index as usize].modify(|_, w| w.rx_data_bk1().clear_bit())
-                });
+                rx_data_bk1_clear(self.index);
                 self.next_bank = NextBank::Bank0;
             }
         }
