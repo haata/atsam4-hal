@@ -13,8 +13,8 @@ pub use self::bus::UdpBus;
 mod endpoint;
 pub use self::endpoint::Endpoint;
 
-use crate::BorrowUnchecked;
 use crate::pac::UDP;
+use crate::BorrowUnchecked;
 
 /// Retrieve current frame number (updated on SOF_EOP)
 pub fn frm_num() -> u16 {

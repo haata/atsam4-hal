@@ -162,19 +162,7 @@ impl UsbBus for UdpBus {
             unsafe { core::ptr::read(glb_stat_reg) }
         );
 
-        // Reset endpoint0
         cortex_m::interrupt::free(|cs| {
-            self.endpoints[0].borrow(cs).borrow_mut().reset();
-        });
-
-        // Enable general UDP interrupts
-        cortex_m::interrupt::free(|cs| {
-            self.udp
-                .borrow(cs)
-                .borrow()
-                .ier
-                .write_with_zero(|w| w.rxsusp().set_bit().sofint().set_bit());
-
             // Enable transceiver
             self.udp
                 .borrow(cs)
@@ -199,6 +187,19 @@ impl UsbBus for UdpBus {
                 .borrow()
                 .faddr
                 .modify(|_, w| unsafe { w.fen().set_bit().fadd().bits(0) });
+
+            // Enable general UDP interrupts
+            self.udp
+                .borrow(cs)
+                .borrow()
+                .ier
+                .write_with_zero(|w| w.rxsusp().set_bit());
+                //.write_with_zero(|w| w.rxsusp().set_bit().sofint().set_bit());
+        });
+
+        // Reset endpoint0
+        cortex_m::interrupt::free(|cs| {
+            self.endpoints[0].borrow(cs).borrow_mut().reset();
         });
 
         let txvc_reg = UDP::borrow_unchecked(|udp| udp.txvc.as_ptr());
@@ -236,7 +237,12 @@ impl UsbBus for UdpBus {
     }
 
     fn write(&self, ep_addr: EndpointAddress, buf: &[u8]) -> usb_device::Result<usize> {
-        log::trace!("{: <4} UdpBus::write({:?}, {:02X?})", frm_num(), ep_addr, buf);
+        log::trace!(
+            "{: <4} UdpBus::write({:?}, {:02X?})",
+            frm_num(),
+            ep_addr,
+            buf
+        );
         cortex_m::interrupt::free(|cs| {
             // Make sure the endpoint is configured correctly
             if self.endpoints[ep_addr.index()]
@@ -278,7 +284,12 @@ impl UsbBus for UdpBus {
     }
 
     fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
-        log::trace!("{: <4} UdpBus::set_stalled({:?}, {})", frm_num(), ep_addr, stalled);
+        log::trace!(
+            "{: <4} UdpBus::set_stalled({:?}, {})",
+            frm_num(),
+            ep_addr,
+            stalled
+        );
         cortex_m::interrupt::free(|cs| {
             if stalled {
                 self.endpoints[ep_addr.index()]
@@ -381,6 +392,7 @@ impl UsbBus for UdpBus {
                     *self.sof_errors.borrow(cs).borrow_mut() += 1;
                 }
             });
+            return PollResult::None;
         }
 
         // Process endpoints - Return as soon as a pending operation is found
@@ -402,6 +414,11 @@ impl UsbBus for UdpBus {
                 ep_out_result |= ep_out;
                 ep_in_complete_result |= ep_in_complete;
                 ep_setup_result |= ep_setup;
+
+                // Exit early if this is EP0
+                if i == 0 {
+                    break;
+                }
             }
         }
 
@@ -449,7 +466,8 @@ impl UsbBus for UdpBus {
                     .borrow(cs)
                     .borrow()
                     .ier
-                    .write_with_zero(|w| w.rxsusp().set_bit().sofint().set_bit());
+                    .write_with_zero(|w| w.rxsusp().set_bit());
+                    //.write_with_zero(|w| w.rxsusp().set_bit().sofint().set_bit());
             });
 
             log::info!("{: <4} UdpBus::poll() -> Resume", frm_num());
