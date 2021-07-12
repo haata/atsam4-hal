@@ -18,7 +18,7 @@ use crate::BorrowUnchecked;
 
 use usb_device::{
     endpoint::{EndpointAddress, EndpointType},
-    UsbDirection
+    UsbDirection,
 };
 
 /// Wrapper for defmt
@@ -29,7 +29,7 @@ struct UdpEndpointAddress {
 impl defmt::Format for UdpEndpointAddress {
     fn format(&self, fmt: defmt::Formatter) {
         if let Some(ep_addr) = self.inner {
-        defmt::write!(fmt, "EndpointAddress({=u8})", ep_addr.into());
+            defmt::write!(fmt, "EndpointAddress({=u8})", ep_addr.into());
         } else {
             defmt::write!(fmt, "EndpointAddress(None)");
         }

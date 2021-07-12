@@ -121,11 +121,11 @@ impl UdpBus {
                 .txvc
                 .modify(|_, w| w.puon().set_bit());
 
-                // Enable allocated endpoints
-                for i in 0..NUM_ENDPOINTS {
-                    self.endpoints[i].borrow(cs).borrow_mut().clear_fifo();
-                    self.endpoints[i].borrow(cs).borrow_mut().enable();
-                }
+            // Enable allocated endpoints
+            for i in 0..NUM_ENDPOINTS {
+                self.endpoints[i].borrow(cs).borrow_mut().clear_fifo();
+                self.endpoints[i].borrow(cs).borrow_mut().enable();
+            }
         });
     }
 }
@@ -141,9 +141,9 @@ impl UsbBus for UdpBus {
     ) -> usb_device::Result<EndpointAddress> {
         defmt::trace!(
             "UdpBus::alloc_ep({:?}, {:?}, {:?}, {}, {})",
-            UdpUsbDirection{ inner: ep_dir },
-            UdpEndpointAddress{ inner: ep_addr },
-            UdpEndpointType{ inner: ep_type },
+            UdpUsbDirection { inner: ep_dir },
+            UdpEndpointAddress { inner: ep_addr },
+            UdpEndpointType { inner: ep_type },
             max_packet_size,
             interval
         );
@@ -282,7 +282,9 @@ impl UsbBus for UdpBus {
         defmt::trace!(
             "{} UdpBus::write({:?}, {:02X})",
             frm_num(),
-            UdpEndpointAddress{ inner: Some(ep_addr) },
+            UdpEndpointAddress {
+                inner: Some(ep_addr)
+            },
             buf
         );
         cortex_m::interrupt::free(|cs| {
@@ -305,8 +307,12 @@ impl UsbBus for UdpBus {
     }
 
     fn read(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> usb_device::Result<usize> {
-        defmt::trace!("{} UdpBus::read({:02X})", frm_num(),
-            UdpEndpointAddress{ inner: Some(ep_addr) },
+        defmt::trace!(
+            "{} UdpBus::read({:02X})",
+            frm_num(),
+            UdpEndpointAddress {
+                inner: Some(ep_addr)
+            },
         );
         cortex_m::interrupt::free(|cs| {
             // Make sure the endpoint is configured correctly
@@ -504,7 +510,7 @@ impl UsbBus for UdpBus {
                     .borrow()
                     .ier
                     .write_with_zero(|w| w.rxsusp().set_bit());
-                    //.write_with_zero(|w| w.rxsusp().set_bit().sofint().set_bit());
+                //.write_with_zero(|w| w.rxsusp().set_bit().sofint().set_bit());
             });
 
             defmt::info!("{} UdpBus::poll() -> Resume", frm_num());

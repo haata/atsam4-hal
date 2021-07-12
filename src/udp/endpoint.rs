@@ -216,7 +216,9 @@ impl Endpoint {
                     "{} Endpoint{}::alloc() -> {:?}",
                     frm_num(),
                     self.index,
-                    UdpEndpointAddress{ inner: Some(address) },
+                    UdpEndpointAddress {
+                        inner: Some(address)
+                    },
                 );
                 return Ok(address);
             }
@@ -227,8 +229,8 @@ impl Endpoint {
             "{} Endpoint{}::alloc({:?}, {:?}, {}, {})",
             frm_num(),
             self.index,
-            UdpEndpointType{ inner: ep_type },
-            UdpUsbDirection{ inner: ep_dir },
+            UdpEndpointType { inner: ep_type },
+            UdpUsbDirection { inner: ep_dir },
             max_packet_size,
             interval
         );
@@ -269,7 +271,9 @@ impl Endpoint {
             "{} Endpoint{}::alloc() -> {:?}",
             frm_num(),
             self.index,
-            UdpEndpointAddress{ inner: Some(address) },
+            UdpEndpointAddress {
+                inner: Some(address)
+            },
         );
         Ok(address)
     }
@@ -425,12 +429,9 @@ impl Endpoint {
         defmt::trace!("{} Endpoint{}::reset()", frm_num(), self.index);
 
         // Toggle TXPKTRDY to force a FIFO flush
+        txpktrdy_set(self.index);
+        txpktrdy_clear(self.index);
         if self.dual_bank() {
-            txpktrdy_set(self.index);
-            txpktrdy_clear(self.index);
-        } else {
-            txpktrdy_set(self.index);
-            txpktrdy_clear(self.index);
             txpktrdy_set(self.index);
             txpktrdy_clear(self.index);
         }
@@ -477,9 +478,12 @@ impl Endpoint {
         // Enable endpoint
         self.enable();
 
-        defmt::trace!("{} Endpoint{}::reset() CSR:{:X}", frm_num(), self.index,
-        UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read()).bits()
-            );
+        defmt::trace!(
+            "{} Endpoint{}::reset() CSR:{:X}",
+            frm_num(),
+            self.index,
+            UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read()).bits()
+        );
         // Enable interrupt
         self.interrupt_set(true);
     }
@@ -522,7 +526,8 @@ impl Endpoint {
                             "{} Endpoint{}::Poll(Ctrl) -> SETUP CSR:{:X}",
                             frm_num(),
                             self.index,
-                            UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read()).bits()
+                            UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read())
+                                .bits()
                         );
                         return PollResult::Data {
                             ep_out: 0,
@@ -532,9 +537,13 @@ impl Endpoint {
                     }
                     // IN packet sent
                     if csr.txcomp().bit() {
-                        defmt::debug!("{} Endpoint{}::Poll(Ctrl) -> IN CSR:{:X}", frm_num(), self.index,
-                                UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read()).bits()
-                            );
+                        defmt::debug!(
+                            "{} Endpoint{}::Poll(Ctrl) -> IN CSR:{:X}",
+                            frm_num(),
+                            self.index,
+                            UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read())
+                                .bits()
+                        );
                         if self.clear_next_txcomp_poll {
                             // Ack TXCOMP
                             txcomp_clear(self.index);
@@ -559,7 +568,8 @@ impl Endpoint {
                                 "{} Endpoint{}::Poll(Ctrl) -> Status OUT CSR:{:X}",
                                 frm_num(),
                                 self.index,
-                                UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read()).bits()
+                                UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read())
+                                    .bits()
                             );
                         } else {
                             defmt::debug!(
@@ -583,7 +593,9 @@ impl Endpoint {
                             "{} Endpoint{}::Poll({:?}) -> OUT CSR:{:X}",
                             frm_num(),
                             self.index,
-                            UdpEndpointType{ inner: self.ep_type },
+                            UdpEndpointType {
+                                inner: self.ep_type
+                            },
                             csr.bits()
                         );
                         1 << self.index
@@ -599,8 +611,11 @@ impl Endpoint {
                             "{} Endpoint{}::Poll({:?}) -> IN CSR:{:X}",
                             frm_num(),
                             self.index,
-                            UdpEndpointType{ inner: self.ep_type },
-                            UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read()).bits()
+                            UdpEndpointType {
+                                inner: self.ep_type
+                            },
+                            UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read())
+                                .bits()
                         );
                         1 << self.index
                     } else {
@@ -694,11 +709,11 @@ impl Endpoint {
                 });
             }
 
-                self.txbanks_free -= 1;
-                // Set TXPKTRDY
-                txpktrdy_set(self.index);
+            self.txbanks_free -= 1;
+            // Set TXPKTRDY
+            txpktrdy_set(self.index);
             // Normal transactions and OUT DIR Ctrl transactions
-            if !csr.dir().bit() || data.len() > 0 {
+            if !csr.dir().bit() || !data.is_empty() {
                 defmt::trace!("TXPKTRDY + TXCOMP");
 
                 cortex_m::asm::delay(30);
@@ -810,7 +825,7 @@ impl Endpoint {
                     self.index,
                     rxbytes,
                     &data[0..rxbytes],
-                    UdpUsbDirection{ inner: dir },
+                    UdpUsbDirection { inner: dir },
                     UDP::borrow_unchecked(|udp| udp.csr()[self.index as usize].read()).bits()
                 );
                 return Ok(rxbytes);
