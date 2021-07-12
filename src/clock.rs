@@ -913,6 +913,9 @@ impl ClockController {
         main_clock: MainClock,
         slow_clock: SlowClock,
     ) -> Self {
+        // Make sure write protection has been disabled
+        pmc.pmc_wpmr.modify(|_, w| w.wpkey().passwd().wpen().clear_bit() );
+
         set_flash_wait_states_to_maximum(
             #[cfg(any(feature = "atsam4e", feature = "atsam4n"))]
             efc,
