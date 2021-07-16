@@ -269,21 +269,6 @@ impl Adc {
         // Enable channel number tag for LCDR
         adc.emr.modify(|_, w| w.tag().set_bit());
 
-        /*
-         TODO
-        // Set user defined channel sequence
-        adc_configure_sequence(ADC, Matrix_rows, sizeof(Matrix_rows));
-
-        // Enable sequencer
-        adc_start_sequencer(ADC);
-
-        // Enable channels
-        for (uint8_t i = 0; i < sizeof(Matrix_rows); i++)
-        {
-            adc_enable_channel(ADC, (enum adc_channel_num_t)i);
-        }
-        */
-
         // Enable temperature sensor
         adc.acr.modify(|_, w| w.tson().set_bit());
 
@@ -294,6 +279,65 @@ impl Adc {
             adc,
             clock: PhantomData,
         }
+    }
+
+    /// Sets the channel read sequence
+    /// Used with the PDC
+    pub fn sequence(&mut self, channels: &[u8]) {
+        let mut pos: u8 = 0;
+        for ch in channels {
+            match pos {
+                0 => self.adc.seqr1.modify(|_, w| unsafe { w.usch1().bits(*ch) }),
+                1 => self.adc.seqr1.modify(|_, w| unsafe { w.usch2().bits(*ch) }),
+                2 => self.adc.seqr1.modify(|_, w| unsafe { w.usch3().bits(*ch) }),
+                3 => self.adc.seqr1.modify(|_, w| unsafe { w.usch4().bits(*ch) }),
+                4 => self.adc.seqr1.modify(|_, w| unsafe { w.usch5().bits(*ch) }),
+                5 => self.adc.seqr1.modify(|_, w| unsafe { w.usch6().bits(*ch) }),
+                6 => self.adc.seqr1.modify(|_, w| unsafe { w.usch7().bits(*ch) }),
+                7 => self.adc.seqr1.modify(|_, w| unsafe { w.usch8().bits(*ch) }),
+                8 => self.adc.seqr2.modify(|_, w| unsafe { w.usch9().bits(*ch) }),
+                9 => self
+                    .adc
+                    .seqr2
+                    .modify(|_, w| unsafe { w.usch10().bits(*ch) }),
+                10 => self
+                    .adc
+                    .seqr2
+                    .modify(|_, w| unsafe { w.usch11().bits(*ch) }),
+                11 => self
+                    .adc
+                    .seqr2
+                    .modify(|_, w| unsafe { w.usch12().bits(*ch) }),
+                12 => self
+                    .adc
+                    .seqr2
+                    .modify(|_, w| unsafe { w.usch13().bits(*ch) }),
+                13 => self
+                    .adc
+                    .seqr2
+                    .modify(|_, w| unsafe { w.usch14().bits(*ch) }),
+                14 => self
+                    .adc
+                    .seqr2
+                    .modify(|_, w| unsafe { w.usch15().bits(*ch) }),
+                _ => {
+                    panic!("Invalid sequence position: {}", pos);
+                }
+            }
+            pos += 1;
+        }
+    }
+
+    /// Enable ADC sequencing
+    /// When enabled, the ADC channel sequence register is used to determine the ADC read order
+    pub fn enable_sequencing(&mut self) {
+        self.adc.mr.modify(|_, w| w.useq().set_bit());
+    }
+
+    /// Disable ADC sequencing
+    /// When disabled (default), the ADC channels are converted by (numerical) channel order
+    pub fn disable_sequencing(&mut self) {
+        self.adc.mr.modify(|_, w| w.useq().clear_bit());
     }
 
     /// Set the powersaving mode
@@ -759,5 +803,66 @@ impl Channel<ADC> for TempSensor {
     type ID = u8;
     fn channel() -> u8 {
         15
+    }
+}
+
+impl Adc {
+    /// Sets the PDC receive address pointer
+    pub fn set_receive_address(&mut self, address: u32) {
+        self.adc.rpr.write(|w| unsafe { w.rxptr().bits(address) });
+    }
+
+    /// Sets the receive increment counter
+    /// Will increment by the count * size of the peripheral data
+    pub fn set_receive_counter(&mut self, count: u16) {
+        self.adc.rcr.write(|w| unsafe { w.rxctr().bits(count) });
+    }
+
+    /// Sets the PDC receive next address pointer
+    pub fn set_receive_next_address(&mut self, address: u32) {
+        self.adc.rnpr.write(|w| unsafe { w.rxnptr().bits(address) });
+    }
+
+    /// Sets the receive next increment counter
+    /// Will increment by the count * size of the peripheral data
+    pub fn set_receive_next_counter(&mut self, count: u16) {
+        self.adc.rncr.write(|w| unsafe { w.rxnctr().bits(count) });
+    }
+
+    /// Starts the PDC transfer
+    pub fn start(&mut self) {
+        self.adc.ptcr.write_with_zero(|w| w.rxten().set_bit());
+    }
+
+    /// Stops the PDC transfer
+    pub fn stop(&mut self) {
+        self.adc.ptcr.write_with_zero(|w| w.rxtdis().set_bit());
+    }
+
+    /// Returns `true` if the PDC is active and may be receiving data
+    pub fn active(&self) -> bool {
+        self.adc.ptsr.read().rxten().bit()
+    }
+
+    /// Enable ENDRX (End of Receive) interrupt
+    /// Triggered when RCR reaches 0
+    pub fn enable_endrx_interrupt(&mut self) {
+        self.adc.ier.write_with_zero(|w| w.endrx().set_bit());
+    }
+
+    /// Disable ENDRX (End of Receive) interrupt
+    pub fn disable_endrx_interrupt(&mut self) {
+        self.adc.idr.write_with_zero(|w| w.endrx().set_bit());
+    }
+
+    /// Enable RXBUFF (Receive Buffer Full) interrupt
+    /// Triggered when RCR and RNCR reach 0
+    pub fn enable_rxbuff_interrupt(&mut self) {
+        self.adc.ier.write_with_zero(|w| w.rxbuff().set_bit());
+    }
+
+    /// Disable RXBUFF (Receive Buffer Full) interrupt
+    pub fn disable_rxbuff_interrupt(&mut self) {
+        self.adc.idr.write_with_zero(|w| w.rxbuff().set_bit());
     }
 }
