@@ -115,20 +115,20 @@ use core::mem;
 #[cfg(feature = "atsam4s")]
 pub mod adc;
 pub mod chipid;
-pub mod clock;
-pub mod delay;
-pub mod efc;
-pub mod gpio;
-pub mod pdc;
+//pub mod clock;
+//pub mod delay;
+//pub mod efc;
+//pub mod gpio;
+//pub mod pdc;
 pub mod prelude;
-pub mod rtt;
-pub mod serial;
+//pub mod rtt;
+//pub mod serial;
 pub mod spi;
-pub mod static_memory_controller;
-pub mod timer;
+//pub mod static_memory_controller;
+//pub mod timer;
 #[cfg(all(feature = "usb", any(feature = "atsam4e", feature = "atsam4s")))]
 pub mod udp;
-pub mod watchdog;
+//pub mod watchdog;
 
 mod sealed;
 

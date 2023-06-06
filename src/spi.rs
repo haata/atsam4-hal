@@ -2,7 +2,7 @@
 use crate::clock::{get_master_clock_frequency, Enabled, SpiClock};
 use crate::gpio::{Pa12, Pa13, Pa14, PfA};
 use crate::pac::SPI;
-use crate::pdc::*;
+//use crate::pdc::*;
 use core::marker::PhantomData;
 use core::sync::atomic::{compiler_fence, Ordering};
 use embedded_dma::{ReadBuffer, WriteBuffer};
@@ -741,6 +741,7 @@ pub struct SpiPayload<MODE, FRAMESIZE> {
     _mode: PhantomData<MODE>,
 }
 
+/*
 pub type SpiRxDma<MODE, FRAMESIZE> = RxDma<SpiPayload<MODE, FRAMESIZE>>;
 pub type SpiTxDma<MODE, FRAMESIZE> = TxDma<SpiPayload<MODE, FRAMESIZE>>;
 pub type SpiRxTxDma<MODE, FRAMESIZE> = RxTxDma<SpiPayload<MODE, FRAMESIZE>>;
@@ -1018,3 +1019,4 @@ macro_rules! spi_pdc {
 spi_pdc! { Fixed, u8 }
 spi_pdc! { Fixed, u16 }
 spi_pdc! { Variable, u32 }
+*/
