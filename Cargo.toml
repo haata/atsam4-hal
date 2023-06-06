@@ -29,24 +29,24 @@ atsam4e16c-pac = { version = "0.3.1", optional = true }
 atsam4e16e-pac = { version = "0.3.1", optional = true }
 
 # atsam4l
-atsam4lc2a-pac = { version = "0.3.1", optional = true }
-atsam4lc2b-pac = { version = "0.3.1", optional = true }
-atsam4lc2c-pac = { version = "0.3.1", optional = true }
-atsam4ls2a-pac = { version = "0.3.1", optional = true }
-atsam4ls2b-pac = { version = "0.3.1", optional = true }
-atsam4ls2c-pac = { version = "0.3.1", optional = true }
-atsam4lc4a-pac = { version = "0.3.1", optional = true }
-atsam4lc4b-pac = { version = "0.3.1", optional = true }
-atsam4lc4c-pac = { version = "0.3.1", optional = true }
-atsam4ls4a-pac = { version = "0.3.1", optional = true }
-atsam4ls4b-pac = { version = "0.3.1", optional = true }
-atsam4ls4c-pac = { version = "0.3.1", optional = true }
-atsam4lc8a-pac = { version = "0.3.1", optional = true }
-atsam4lc8b-pac = { version = "0.3.1", optional = true }
-atsam4lc8c-pac = { version = "0.3.1", optional = true }
-atsam4ls8a-pac = { version = "0.3.1", optional = true }
-atsam4ls8b-pac = { version = "0.3.1", optional = true }
-atsam4ls8c-pac = { version = "0.3.1", optional = true }
+atsam4lc2a-pac = { version = "0.3.2", optional = true }
+atsam4lc2b-pac = { version = "0.3.2", optional = true }
+atsam4lc2c-pac = { version = "0.3.2", optional = true }
+atsam4ls2a-pac = { version = "0.3.2", optional = true }
+atsam4ls2b-pac = { version = "0.3.2", optional = true }
+atsam4ls2c-pac = { version = "0.3.2", optional = true }
+atsam4lc4a-pac = { version = "0.3.2", optional = true }
+atsam4lc4b-pac = { version = "0.3.2", optional = true }
+atsam4lc4c-pac = { version = "0.3.2", optional = true }
+atsam4ls4a-pac = { version = "0.3.2", optional = true }
+atsam4ls4b-pac = { version = "0.3.2", optional = true }
+atsam4ls4c-pac = { version = "0.3.2", optional = true }
+atsam4lc8a-pac = { version = "0.3.2", optional = true }
+atsam4lc8b-pac = { version = "0.3.2", optional = true }
+atsam4lc8c-pac = { version = "0.3.2", optional = true }
+atsam4ls8a-pac = { version = "0.3.2", optional = true }
+atsam4ls8b-pac = { version = "0.3.2", optional = true }
+atsam4ls8c-pac = { version = "0.3.2", optional = true }
 
 # atsam4n
 atsam4n8a-pac = { version = "0.3.1", optional = true }

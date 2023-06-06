@@ -14,6 +14,8 @@ pub enum EmbeddedProcessor {
 #[derive(Clone, Copy, Debug, defmt::Format)]
 pub enum Family {
     AtSam4e,
+    AtSam4lc,
+    AtSam4ls,
     AtSam4n,
     AtSam4s,
 }
@@ -24,6 +26,25 @@ pub enum Model {
     AtSam4e8e,
     AtSam4e16c,
     AtSam4e16e,
+
+    AtSam4lc2a,
+    AtSam4lc2b,
+    AtSam4lc2c,
+    AtSam4lc4a,
+    AtSam4lc4b,
+    AtSam4lc4c,
+    AtSam4lc8a,
+    AtSam4lc8b,
+    AtSam4lc8c,
+    AtSam4ls2a,
+    AtSam4ls2b,
+    AtSam4ls2c,
+    AtSam4ls4a,
+    AtSam4ls4b,
+    AtSam4ls4c,
+    AtSam4ls8a,
+    AtSam4ls8b,
+    AtSam4ls8c,
 
     AtSam4n8a,
     AtSam4n8b,
@@ -214,6 +235,37 @@ impl ChipId {
                 0x0012_0200 => (Some(Family::AtSam4e), Some(Model::AtSam4e16e)),
                 _ => (Some(Family::AtSam4e), None),
             },
+
+            0xAB0A_07E0 => match chip_id.exid.read().bits() {
+                0x0200_000F => (Some(Family::AtSam4lc), Some(Model::AtSam4lc2a)),
+                0x0300_000F => (Some(Family::AtSam4lc), Some(Model::AtSam4lc2b)),
+                0x0400_000F => (Some(Family::AtSam4lc), Some(Model::AtSam4lc2c)),
+
+                0x0200_0002 => (Some(Family::AtSam4ls), Some(Model::AtSam4ls2a)),
+                0x0300_0002 => (Some(Family::AtSam4ls), Some(Model::AtSam4ls2b)),
+                0x0400_0002 => (Some(Family::AtSam4ls), Some(Model::AtSam4ls2c)),
+                _ => (Some(Family::AtSam4ls), None),
+            }
+            0xAB0A_09E0 => match chip_id.exid.read().bits() {
+                0x0200_000F => (Some(Family::AtSam4lc), Some(Model::AtSam4lc4a)),
+                0x0300_000F => (Some(Family::AtSam4lc), Some(Model::AtSam4lc4b)),
+                0x0400_000F => (Some(Family::AtSam4lc), Some(Model::AtSam4lc4c)),
+
+                0x0200_0002 => (Some(Family::AtSam4ls), Some(Model::AtSam4ls4a)),
+                0x0300_0002 => (Some(Family::AtSam4ls), Some(Model::AtSam4ls4b)),
+                0x0400_0002 => (Some(Family::AtSam4ls), Some(Model::AtSam4ls4c)),
+                _ => (Some(Family::AtSam4ls), None),
+            }
+            0xAB0B_0AE0 => match chip_id.exid.read().bits() {
+                0x1200_000F => (Some(Family::AtSam4lc), Some(Model::AtSam4lc8a)),
+                0x1300_000F => (Some(Family::AtSam4lc), Some(Model::AtSam4lc8b)),
+                0x1400_000F => (Some(Family::AtSam4lc), Some(Model::AtSam4lc8c)),
+
+                0x1200_0002 => (Some(Family::AtSam4ls), Some(Model::AtSam4ls8a)),
+                0x1300_0002 => (Some(Family::AtSam4ls), Some(Model::AtSam4ls8b)),
+                0x1400_0002 => (Some(Family::AtSam4ls), Some(Model::AtSam4ls8c)),
+                _ => (Some(Family::AtSam4ls), None),
+            }
 
             _ => (None, None),
         }
