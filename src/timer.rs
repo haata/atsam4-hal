@@ -151,6 +151,7 @@ impl<CLK, const CH: u8, const FREQ: u32> TimerCounterChannel<$TC, CLK, CH, FREQ>
     pub fn clock_input(&mut self, source: ClockSource) {
         self.source = source;
 
+        /* TODO cmr?
         // Setup divider
         match CH {
             0 => $TC::borrow_unchecked(|tc| tc.cmr0().modify(|_, w| w.tcclks().bits(source as u8))),
@@ -158,6 +159,7 @@ impl<CLK, const CH: u8, const FREQ: u32> TimerCounterChannel<$TC, CLK, CH, FREQ>
             2 => $TC::borrow_unchecked(|tc| tc.cmr2().modify(|_, w| w.tcclks().bits(source as u8))),
             _ => panic!("Invalid TimerCounterChannel: {}", CH),
         }
+        */
     }
 
     /// Enable the interrupt for this TimerCounterChannel
@@ -238,7 +240,7 @@ impl<CLK, const CH: u8, const FREQ: u32> CountDown for TimerCounterChannel<$TC, 
         #[cfg(feature = "atsam4e")]
         let max_counter = u32::max_value();
         // atsam4n and atsam4s support 16-bit clock timers
-        #[cfg(any(feature = "atsam4n", feature = "atsam4s"))]
+        #[cfg(any(feature = "atsam4l", feature = "atsam4n", feature = "atsam4s"))]
         let max_counter: u32 = u16::max_value() as u32;
 
         // Compute cycles
@@ -252,6 +254,7 @@ impl<CLK, const CH: u8, const FREQ: u32> CountDown for TimerCounterChannel<$TC, 
 
         defmt::trace!("{}->{} Cycles:{} ClockSource:{}", core::stringify!($TC), CH, cycles, self.source);
 
+        /* TODO cmr?
         // Setup divider
         match CH {
             0 => $TC::borrow_unchecked(|tc| tc.cmr0().modify(|_, w| w.tcclks().bits(self.source as u8).cpctrg().set_bit())),
@@ -259,6 +262,7 @@ impl<CLK, const CH: u8, const FREQ: u32> CountDown for TimerCounterChannel<$TC, 
             2 => $TC::borrow_unchecked(|tc| tc.cmr2().modify(|_, w| w.tcclks().bits(self.source as u8).cpctrg().set_bit())),
             _ => panic!("Invalid TimerCounterChannel: {}", CH),
         }
+        */
 
         // Setup count-down value
         match CH {

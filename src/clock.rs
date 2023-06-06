@@ -1,6 +1,10 @@
 #![allow(clippy::upper_case_acronyms)]
 
+#[cfg(not(feature = "atsam4l"))]
 use crate::pac::{pmc, PMC, SUPC};
+
+#[cfg(feature = "atsam4l")]
+use crate::pac::{pm as pmc, PM as PMC};
 
 #[cfg(any(feature = "atsam4e", feature = "atsam4n"))]
 use crate::pac::EFC;

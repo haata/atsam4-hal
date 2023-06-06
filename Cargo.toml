@@ -46,7 +46,8 @@ atsam4lc8b-pac = { version = "0.3.2", optional = true }
 atsam4lc8c-pac = { version = "0.3.2", optional = true }
 atsam4ls8a-pac = { version = "0.3.2", optional = true }
 atsam4ls8b-pac = { version = "0.3.2", optional = true }
-atsam4ls8c-pac = { version = "0.3.2", optional = true }
+#atsam4ls8c-pac = { version = "0.3.2", optional = true }
+atsam4ls8c-pac = { path = "../atsam-pac/pac/atsam4ls8c", version = "0.3.1", optional = true }
 
 # atsam4n
 atsam4n8a-pac = { version = "0.3.1", optional = true }
