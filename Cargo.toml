@@ -28,6 +28,26 @@ atsam4e8e-pac = { version = "0.3.1", optional = true }
 atsam4e16c-pac = { version = "0.3.1", optional = true }
 atsam4e16e-pac = { version = "0.3.1", optional = true }
 
+# atsam4l
+atsam4lc2a-pac = { version = "0.3.1", optional = true }
+atsam4lc2b-pac = { version = "0.3.1", optional = true }
+atsam4lc2c-pac = { version = "0.3.1", optional = true }
+atsam4ls2a-pac = { version = "0.3.1", optional = true }
+atsam4ls2b-pac = { version = "0.3.1", optional = true }
+atsam4ls2c-pac = { version = "0.3.1", optional = true }
+atsam4lc4a-pac = { version = "0.3.1", optional = true }
+atsam4lc4b-pac = { version = "0.3.1", optional = true }
+atsam4lc4c-pac = { version = "0.3.1", optional = true }
+atsam4ls4a-pac = { version = "0.3.1", optional = true }
+atsam4ls4b-pac = { version = "0.3.1", optional = true }
+atsam4ls4c-pac = { version = "0.3.1", optional = true }
+atsam4lc8a-pac = { version = "0.3.1", optional = true }
+atsam4lc8b-pac = { version = "0.3.1", optional = true }
+atsam4lc8c-pac = { version = "0.3.1", optional = true }
+atsam4ls8a-pac = { version = "0.3.1", optional = true }
+atsam4ls8b-pac = { version = "0.3.1", optional = true }
+atsam4ls8c-pac = { version = "0.3.1", optional = true }
+
 # atsam4n
 atsam4n8a-pac = { version = "0.3.1", optional = true }
 atsam4n8b-pac = { version = "0.3.1", optional = true }
@@ -67,6 +87,33 @@ atsam4e8c = ["atsam4e", "atsam4e_c", "atsam4e8c-pac", "atsam4e8c-pac/rt", "atsam
 atsam4e8e = ["atsam4e", "atsam4e_e", "atsam4e8e-pac", "atsam4e8e-pac/rt", "atsam4e8e-pac/critical-section"]
 atsam4e16c = ["atsam4e", "atsam4e_c", "atsam4e16c-pac", "atsam4e16c-pac/rt", "atsam4e16c-pac/critical-section"]
 atsam4e16e = ["atsam4e", "atsam4e_e", "atsam4e16e-pac", "atsam4e16e-pac/rt", "atsam4e16e-pac/critical-section"]
+
+# atsam4l
+atsam4l = []
+atsam4l_a = [] # 48-pin
+atsam4l_b = [] # 64-pin
+atsam4l_c = [] # 100-pin
+atsam4lc = [] # Segment LCD, AESA, USB (Device + Host)
+atsam4ls = [] # USB (Device-only)
+
+atsam4lc2a = ["atsam4l", "atsam4l_a", "atsam4lc", "atsam4lc2a-pac", "atsam4lc2a-pac/rt", "atsam4lc2a-pac/critical-section"]
+atsam4lc2b = ["atsam4l", "atsam4l_b", "atsam4lc", "atsam4lc2b-pac", "atsam4lc2b-pac/rt", "atsam4lc2b-pac/critical-section"]
+atsam4lc2c = ["atsam4l", "atsam4l_c", "atsam4lc", "atsam4lc2c-pac", "atsam4lc2c-pac/rt", "atsam4lc2c-pac/critical-section"]
+atsam4lc4a = ["atsam4l", "atsam4l_a", "atsam4lc", "atsam4lc4a-pac", "atsam4lc4a-pac/rt", "atsam4lc4a-pac/critical-section"]
+atsam4lc4b = ["atsam4l", "atsam4l_b", "atsam4lc", "atsam4lc4b-pac", "atsam4lc4b-pac/rt", "atsam4lc4b-pac/critical-section"]
+atsam4lc4c = ["atsam4l", "atsam4l_c", "atsam4lc", "atsam4lc4c-pac", "atsam4lc4c-pac/rt", "atsam4lc4c-pac/critical-section"]
+atsam4lc8a = ["atsam4l", "atsam4l_a", "atsam4lc", "atsam4lc8a-pac", "atsam4lc8a-pac/rt", "atsam4lc8a-pac/critical-section"]
+atsam4lc8b = ["atsam4l", "atsam4l_b", "atsam4lc", "atsam4lc8b-pac", "atsam4lc8b-pac/rt", "atsam4lc8b-pac/critical-section"]
+atsam4lc8c = ["atsam4l", "atsam4l_c", "atsam4lc", "atsam4lc8c-pac", "atsam4lc8c-pac/rt", "atsam4lc8c-pac/critical-section"]
+atsam4ls2a = ["atsam4l", "atsam4l_a", "atsam4ls", "atsam4ls2a-pac", "atsam4ls2a-pac/rt", "atsam4ls2a-pac/critical-section"]
+atsam4ls2b = ["atsam4l", "atsam4l_b", "atsam4ls", "atsam4ls2b-pac", "atsam4ls2b-pac/rt", "atsam4ls2b-pac/critical-section"]
+atsam4ls2c = ["atsam4l", "atsam4l_c", "atsam4ls", "atsam4ls2c-pac", "atsam4ls2c-pac/rt", "atsam4ls2c-pac/critical-section"]
+atsam4ls4a = ["atsam4l", "atsam4l_a", "atsam4ls", "atsam4ls4a-pac", "atsam4ls4a-pac/rt", "atsam4ls4a-pac/critical-section"]
+atsam4ls4b = ["atsam4l", "atsam4l_b", "atsam4ls", "atsam4ls4b-pac", "atsam4ls4b-pac/rt", "atsam4ls4b-pac/critical-section"]
+atsam4ls4c = ["atsam4l", "atsam4l_c", "atsam4ls", "atsam4ls4c-pac", "atsam4ls4c-pac/rt", "atsam4ls4c-pac/critical-section"]
+atsam4ls8a = ["atsam4l", "atsam4l_a", "atsam4ls", "atsam4ls8a-pac", "atsam4ls8a-pac/rt", "atsam4ls8a-pac/critical-section"]
+atsam4ls8b = ["atsam4l", "atsam4l_b", "atsam4ls", "atsam4ls8b-pac", "atsam4ls8b-pac/rt", "atsam4ls8b-pac/critical-section"]
+atsam4ls8c = ["atsam4l", "atsam4l_c", "atsam4ls", "atsam4ls8c-pac", "atsam4ls8c-pac/rt", "atsam4ls8c-pac/critical-section"]
 
 # atsam4n
 atsam4n = []
