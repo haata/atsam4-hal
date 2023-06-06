@@ -309,7 +309,11 @@ impl<FRAMESIZE> SpiMaster<FRAMESIZE> {
 
             // Clear spi protection mode register
             // (needed before writing to SPI_MR and SPI_CSRx)
+            #[cfg(not(feature = "atsam4l"))]
             spi.wpmr
+                .write_with_zero(|w| w.wpkey().bits(0x535049).wpen().clear_bit());
+            #[cfg(feature = "atsam4l")]
+            spi.wpcr
                 .write_with_zero(|w| w.wpkey().bits(0x535049).wpen().clear_bit());
 
             // Setup SPI Master
